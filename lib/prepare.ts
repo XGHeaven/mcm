@@ -1,1 +1,1 @@
-import 'https://deno.land/x/dotenv/load.ts'
+import "https://deno.land/x/dotenv/load.ts";

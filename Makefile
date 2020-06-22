@@ -1,4 +1,4 @@
-.PHONY: run install
+.PHONY: run install format
 
 run:
 	deno run
@@ -8,3 +8,6 @@ install:
 
 play:
 	deno run -A --unstable ./lib/playground.ts
+
+format:
+	deno fmt lib/

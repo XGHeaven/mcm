@@ -1,1 +1,1 @@
-import './prepare.ts'
+import "./prepare.ts";
