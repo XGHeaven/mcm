@@ -40,7 +40,11 @@ const getLauncherEndpoint = (jarUrl: string) => {
 };
 
 const getVersionLockEndpoint = (version: string) => {
-  return path.join(`/minecraft/lock/${version}.lock`);
+  return `/minecraft/lock/${version}.json`;
+};
+
+const getAssetsLockEndpoint = (hash: string) => {
+  return `/minecraft/lock/assets-${hash}.json`;
 };
 
 export class MinecraftExecutor {
@@ -62,6 +66,14 @@ export class MinecraftExecutor {
 
   createCacheAssetIndex(assetIndex: MinecraftPackageAssetIndex): TaskExecutor {
     return async ({ queueChild, task }) => {
+      const lockfile = getAssetsLockEndpoint(assetIndex.sha1);
+      if (await this.storage.isLock(lockfile)) {
+        console.log(
+          `Asset of ${assetIndex.id}(${assetIndex.sha1}) has been locked`,
+        );
+        return;
+      }
+
       const { url: assetIndexUrl } = assetIndex;
       const [data, json] = await fetchBinaryAndJson(assetIndexUrl);
 
@@ -77,10 +89,7 @@ export class MinecraftExecutor {
         return;
       }
 
-      // TODO: debug
-      for (
-        const { hash } of Object.values(json.objects).slice(0, 10) as any[]
-      ) {
+      for (const { hash } of Object.values(json.objects) as any[]) {
         queueChild(
           `${task.name}:${hash}`,
           this.createCacheResource(
@@ -94,13 +103,24 @@ export class MinecraftExecutor {
         getAssetIndexStorageEndpoint(assetIndexUrl),
         data,
       );
+
+      return async ({ error }) => {
+        if (error) {
+          console.error(
+            `Cannot lock assets of ${assetIndex.id} has ${error} error(s). Please try again`,
+          );
+        } else {
+          await this.storage.lock(lockfile);
+        }
+      };
     };
   }
 
   createVersion(version: MinecraftVersion): TaskExecutor {
     const { id } = version;
     return async ({ queueChild, task }) => {
-      if (await this.storage.exist(getVersionLockEndpoint(id))) {
+      const lockfile = getVersionLockEndpoint(id);
+      if (await this.storage.isLock(lockfile)) {
         console.log(`Version of ${id} has been locked`);
         return;
       }
@@ -111,7 +131,6 @@ export class MinecraftExecutor {
         this.createCacheAssetIndex(mcPackage.assetIndex),
       );
 
-      // TODO: debug
       for (const [type, download] of Object.entries(mcPackage.downloads)) {
         queueChild(
           `${task.name}:downloads:${type}`,
@@ -122,7 +141,6 @@ export class MinecraftExecutor {
         );
       }
 
-      // TODO: debug
       for (const { downloads: libInfo, name: libName } of mcPackage.libraries) {
         queueChild(
           `${task.name}:library:${libName}`,
@@ -145,12 +163,8 @@ export class MinecraftExecutor {
           console.error(
             `Version ${version.id} has verified error, please try start again`,
           );
-          return;
         } else {
-          await this.storage.cacheFile(
-            getVersionLockEndpoint(version.id),
-            new Uint8Array(0),
-          );
+          await this.storage.lock(lockfile);
         }
       };
     };

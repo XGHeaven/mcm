@@ -138,7 +138,7 @@ export class SyncQueue {
 
   private finishChildTask(task: Task) {
     task.childFinished++;
-    if (task.childCount <= task.childFinished && task.parent) {
+    if (task.childCount === task.childFinished) {
       if (task.finisher) {
         this.tasks.unshift(
           createTask(`${task.name}:finisher`, async () =>
@@ -149,10 +149,12 @@ export class SyncQueue {
             })),
         );
       }
-      if (task.childErrorCount) {
-        task.parent.childErrorCount++;
+      if (task.parent) {
+        if (task.childErrorCount) {
+          task.parent.childErrorCount++;
+        }
+        this.finishChildTask(task.parent);
       }
-      this.finishChildTask(task.parent);
     }
   }
 

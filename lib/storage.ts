@@ -4,6 +4,12 @@ import { FsLayer } from "./storage/fs-layer.ts";
 import { path } from "./deps.ts";
 import { AliOSSLayer } from "./storage/alioss-layer.ts";
 
+function createLockBuffer() {
+  return new TextEncoder().encode(
+    JSON.stringify({ lock: true, time: new Date().toUTCString() }),
+  );
+}
+
 export class StorageManager {
   static createLayer(): StorageLayer {
     let type = (Deno.env.get("STORAGE_LAYER_TYPE") || "").toLowerCase();
@@ -80,7 +86,11 @@ export class StorageManager {
     });
   }
 
-  async exist(filename: string) {
-    return this.layer.exist(filename);
+  async isLock(lockpath: string) {
+    return this.layer.exist(lockpath);
+  }
+
+  async lock(lockpath: string) {
+    await this.layer.write(lockpath, createLockBuffer());
   }
 }
