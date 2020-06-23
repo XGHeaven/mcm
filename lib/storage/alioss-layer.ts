@@ -90,7 +90,7 @@ export class AliOSSLayer extends StorageLayer {
     super();
   }
 
-  private request(
+  private async request(
     method: string,
     objectKey: string,
     data?: ArrayBuffer,
@@ -125,17 +125,29 @@ export class AliOSSLayer extends StorageLayer {
       ),
     );
 
-    return fetch(
-      new Request(url, {
-        method,
-        headers: {
-          authorization: `OSS ${this.key}:${signResult}`,
-          host: `${this.bucket}.${this.region}.aliyuncs.com`,
-          ...signHeader,
-        },
-        body: data,
-      }),
-    );
+    let i = 0
+    let error: any
+    while (i < 3) {
+      // retry 3 times
+      try {
+        const resp = await fetch(
+          new Request(url, {
+            method,
+            headers: {
+              authorization: `OSS ${this.key}:${signResult}`,
+              host: `${this.bucket}.${this.region}.aliyuncs.com`,
+              ...signHeader,
+            },
+            body: data,
+          }),
+        );
+        return resp
+      } catch(e) {
+        i++
+        error = i
+      }
+    }
+    throw error
   }
 
   async read(filepath: string): Promise<string> {
