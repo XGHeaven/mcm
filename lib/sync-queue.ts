@@ -33,6 +33,12 @@ interface ChildTasksStatus {
   success: number;
 }
 
+interface SyncQueueOptions {
+  parallel?: number
+  longTaskTimeout?: number
+  maxParallel?: number
+}
+
 export function createTask(
   name: string,
   exe: TaskExecutor,
@@ -51,9 +57,22 @@ export function createTask(
 }
 
 export class SyncQueue {
-  parallel = 8;
+  static DEFAULT_PARALLEL = 8
+  static MAX_PARALLEL = 32
+  static DEFAULT_TIMEOUT = 30 * 1000
+
+  private minParallel: number;
+  private maxParallel: number
+  private parallel: number
+  private longTaskTimeout: number
   private running = 0;
   private tasks: Task[] = [];
+
+  constructor(options: SyncQueueOptions = {}) {
+    this.parallel = this.minParallel = options.parallel || SyncQueue.DEFAULT_PARALLEL
+    this.maxParallel = options.maxParallel || SyncQueue.MAX_PARALLEL
+    this.longTaskTimeout = options.longTaskTimeout || SyncQueue.DEFAULT_TIMEOUT
+  }
 
   queue(name: string, executor: TaskExecutor) {
     this.tasks.push(createTask(name, executor));
@@ -61,14 +80,12 @@ export class SyncQueue {
   }
 
   runNext() {
-    if (this.running >= this.parallel) {
-      return;
-    }
-
     for (const task of this.tasks) {
+      if (this.running >= this.parallel) {
+        break
+      }
       if (task.status === TaskStatus.WAITING) {
-        this.run(task);
-        break;
+        this.run(task)
       }
     }
   }
@@ -77,15 +94,18 @@ export class SyncQueue {
     this.running++;
     task.status = TaskStatus.RUNNING;
     console.log(`Start task: ${task.name}`);
-    const result = Promise.resolve(task.executor({
+    const result = Promise.resolve().then(() => task.executor({
       queue: this.queue.bind(this),
       queueChild: this.queueChild.bind(this, task),
       parent: task.parent,
       task,
     }));
+    let isLongTask = false
 
     const timer = setTimeout(() => {
       console.warn(`* Task ${task.name} running over 30s`);
+      isLongTask = true
+      this.changeParallel(1)
     }, 30 * 1000); // 30s
 
     const finish = () => {
@@ -94,6 +114,9 @@ export class SyncQueue {
       this.tasks.splice(this.tasks.indexOf(task), 1);
       if (task.parent) {
         this.finishChildTask(task.parent);
+      }
+      if (isLongTask) {
+        this.changeParallel(-1)
       }
       Promise.resolve().then(() => this.runNext());
     };
@@ -113,6 +136,7 @@ export class SyncQueue {
         task.parent.childErrorCount++;
       }
       finish();
+      // TODO: clean all child
       console.error(
         `${this.formatChildPercent(task.parent)}Task error: ${task.name}`,
       );
@@ -164,5 +188,10 @@ export class SyncQueue {
     }
 
     return `(${task.childFinished}/${task.childCount}) `;
+  }
+
+  private changeParallel(delta: number){
+    this.parallel = Math.min(Math.max(this.parallel + delta, this.minParallel), this.maxParallel)
+    this.runNext()
   }
 }

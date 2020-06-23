@@ -97,7 +97,7 @@ export class AliOSSLayer extends StorageLayer {
     type?: string,
   ) {
     const encodedKey = encodeKey(objectKey);
-    let url = `https://${this.region}.aliyuncs.com`;
+    let url = `http://${this.region}.aliyuncs.com`;
     if (encodedKey.startsWith("/")) {
       url += encodedKey;
     } else {

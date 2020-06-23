@@ -181,7 +181,6 @@ export class FabricExecutor {
         }
       };
 
-      // TODO: debug
       for (const { loader, intermediary, launcherMeta } of loaders) {
         mavenSet.add(loader.maven);
         mavenSet.add(intermediary.maven);
@@ -194,7 +193,7 @@ export class FabricExecutor {
           const [source, target] = this.getMetaPairPath(
             `/loader/${gameVersion}/${loader.version}`,
           );
-          await this.storage.cacheRemoteFile(source, target, true);
+          await this.storage.cacheRemoteFile(source, target);
         });
       }
 
