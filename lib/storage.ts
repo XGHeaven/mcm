@@ -86,6 +86,10 @@ export class StorageManager {
     });
   }
 
+  async exist(filepath: string) {
+    return this.layer.exist(filepath);
+  }
+
   async isLock(lockpath: string) {
     return this.layer.exist(lockpath);
   }

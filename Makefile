@@ -11,3 +11,6 @@ play:
 
 format:
 	deno fmt lib/
+
+test:
+	deno test --unstable -A

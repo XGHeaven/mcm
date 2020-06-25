@@ -44,3 +44,17 @@ export function encodeKey(key: string) {
   key = key.replace(/%2F/g, "/");
   return key;
 }
+
+export function parseVersionMatcher(version: string): VersionMatcher {
+  if (version.endsWith('-rc')) {
+    return new RegExp('^' + version.replace(/\./g, '\\.') + '\\d+$')
+  } else if (version.endsWith('-pre')) {
+    return new RegExp('^' + version.replace(/\./g, '\\.') + '\\d+$')
+  } else if (version.startsWith("/") && version.endsWith("/")) {
+    return new RegExp(version.slice(1, -1))
+  } else if (version.includes('*')) {
+    return new RegExp('^' + version.replace(/\./g, '\\.').replace(/\*/g, '\\d+$'))
+  }
+
+  return version
+}

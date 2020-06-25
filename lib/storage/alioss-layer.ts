@@ -81,6 +81,8 @@ function computeSignature(accessKeySecret: string, canonicalString: string) {
 }
 
 export class AliOSSLayer extends StorageLayer {
+  #existCache = new Set<string>();
+
   constructor(
     private key: string,
     private secret: string,
@@ -125,8 +127,8 @@ export class AliOSSLayer extends StorageLayer {
       ),
     );
 
-    let i = 0
-    let error: any
+    let i = 0;
+    let error: any;
     while (i < 3) {
       // retry 3 times
       try {
@@ -141,13 +143,13 @@ export class AliOSSLayer extends StorageLayer {
             body: data,
           }),
         );
-        return resp
-      } catch(e) {
-        i++
-        error = i
+        return resp;
+      } catch (e) {
+        i++;
+        error = i;
       }
     }
-    throw error
+    throw error;
   }
 
   async read(filepath: string): Promise<string> {
@@ -176,6 +178,10 @@ export class AliOSSLayer extends StorageLayer {
   }
 
   async exist(filepath: string): Promise<boolean> {
+    if (this.#existCache.has(filepath)) {
+      // 只需要缓存确定存在的文件即可，对于不存在的文件，肯定会上传的
+      return true;
+    }
     const resp = await this.request("HEAD", filepath);
 
     try {
@@ -183,6 +189,7 @@ export class AliOSSLayer extends StorageLayer {
       if (resp.status !== 200) {
         return false;
       }
+      this.#existCache.add(filepath);
       return true;
     } catch (err) {
       console.error(err);

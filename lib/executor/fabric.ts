@@ -1,8 +1,11 @@
 import { StorageManager } from "../storage.ts";
-import { TaskExecutor } from "../sync-queue.ts";
 import { fetchBinaryAndJson } from "../service.ts";
 import { path } from "../deps.ts";
-import { matchVersion, VersionMatcher } from "../utils.ts";
+import {
+  TaskManager,
+  TaskExecutor,
+  GroupTaskCollector,
+} from "../task/manager.ts";
 
 export interface GameVersion {
   version: string;
@@ -76,7 +79,11 @@ export class FabricExecutor {
 
   private allVersions!: AllVersions;
 
-  constructor(private storage: StorageManager) {}
+  constructor(
+    private storage: StorageManager,
+    private tasks: TaskManager,
+    private versionSelector: (version: GameVersion) => boolean,
+  ) {}
 
   /**
    * 获取上游的 url 以及本地存储的文件名。
@@ -127,43 +134,9 @@ export class FabricExecutor {
     };
   }
 
-  createYarn(gameVersion?: VersionMatcher): TaskExecutor {
-    return async ({ queueChild, task }) => {
-      const { mappings } = this.allVersions;
-
-      for (const mapping of mappings) {
-        if (matchVersion(mapping.gameVersion, gameVersion)) {
-          queueChild(
-            `${task.name}:${mapping.version}`,
-            this.createMavenJar(mapping.maven),
-          );
-        }
-      }
-    };
-  }
-
-  createGame(gameVersion?: VersionMatcher): TaskExecutor {
-    return async ({ queueChild, task }) => {
-      const { game: games } = this.allVersions;
-
-      for (const game of games) {
-        if (matchVersion(game.version, gameVersion)) {
-          queueChild(
-            `${task.name}:loader:${game.version}`,
-            this.createLoaderOfGame(game.version),
-          );
-          queueChild(
-            `${task.name}:intermediary:${game.version}`,
-            this.createIntermediaryOfGame(game.version),
-          );
-        }
-      }
-    };
-  }
-
   // 根据游戏版本获取对应的 Loader，并递归获取下面的 loader 的 meta
   createLoaderOfGame(gameVersion: string): TaskExecutor {
-    return async ({ queueChild, task }) => {
+    return async ({ queue, task }) => {
       const [source, target] = this.getMetaPairPath(`/loader/${gameVersion}`);
       const [data, loaders] = await fetchBinaryAndJson<
         Array<{
@@ -189,7 +162,7 @@ export class FabricExecutor {
         launcherMeta.libraries.client.forEach(collectMaven);
         launcherMeta.libraries.server.forEach(collectMaven);
 
-        queueChild(`${task.name}:${loader.version}`, async () => {
+        queue(`${task.name}:${loader.version}`, async () => {
           const [source, target] = this.getMetaPairPath(
             `/loader/${gameVersion}/${loader.version}`,
           );
@@ -198,7 +171,7 @@ export class FabricExecutor {
       }
 
       for (const maven of mavenSet) {
-        queueChild(`${task.name}:maven:${maven}`, this.createMavenJar(maven));
+        queue(`${task.name}:maven:${maven}`, this.createMavenJar(maven));
       }
 
       await this.storage.cacheJSON(target, data, true);
@@ -215,8 +188,36 @@ export class FabricExecutor {
     };
   }
 
-  createVersions(gameVersion?: VersionMatcher): TaskExecutor {
-    return async ({ queueChild, task }) => {
+  createVersion(version: string): TaskExecutor {
+    return async (
+      { queue, task, queueGroup, startLongPhase, stopLongPhase },
+    ) => {
+      queue(
+        `${task.name}:loader:${version}`,
+        this.createLoaderOfGame(version),
+      );
+      queue(
+        `${task.name}:intermediary:${version}`,
+        this.createIntermediaryOfGame(version),
+      );
+
+      const col = new GroupTaskCollector();
+
+      for (const mapping of this.allVersions.mappings) {
+        if (mapping.gameVersion === version) {
+          col.collect(
+            `${task.name}:${mapping.version}`,
+            this.createMavenJar(mapping.maven),
+          );
+        }
+      }
+
+      queueGroup(`${task.name}:mappings`, col.group);
+    };
+  }
+
+  execute() {
+    return this.tasks.queue("fabric", async ({ queue, queueGroup, task }) => {
       if (!this.allVersions) {
         const [source, target] = this.getMetaPairPath();
         const [data, allVersions] = await fetchBinaryAndJson<AllVersions>(
@@ -226,9 +227,19 @@ export class FabricExecutor {
         await this.storage.cacheJSON(target, data, true);
       }
 
-      queueChild(`${task.name}:json`, this.updateJSON);
-      queueChild(`${task.name}:game`, this.createGame(gameVersion));
-      queueChild(`${task.name}:mappings`, this.createYarn(gameVersion));
-    };
+      const gvc = new GroupTaskCollector();
+
+      for (const gameVersion of this.allVersions.game) {
+        if (this.versionSelector(gameVersion)) {
+          gvc.collect(
+            `${task.name}:${gameVersion.version}`,
+            this.createVersion(gameVersion.version),
+          );
+        }
+      }
+
+      queue(`${task.name}:json`, this.updateJSON);
+      queueGroup(`${task.name}:versions`, gvc.group);
+    });
   }
 }
