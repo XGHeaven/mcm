@@ -3,7 +3,7 @@
 Minecraft Mirror for vanilla/fabric/forge/optfine
 
 采用 No Server 的架构方案，极大的降低资源费用的使用。
-遵循 OMCM(Open Minecraft Mirror) 协议，在下文中定义。
+本代码的实现遵循 OMCM(Open Minecraft Mirror) 协议，该协议下文中定义。
 
 镜像地址：http://mcm.xgheaven.com
 

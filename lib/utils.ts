@@ -46,14 +46,29 @@ export function encodeKey(key: string) {
 }
 
 export function parseVersionMatcher(version: string): VersionMatcher {
-  if (version.endsWith('-rc')) {
-    return new RegExp('^' + version.replace(/\./g, '\\.') + '\\d+$')
-  } else if (version.endsWith('-pre')) {
-    return new RegExp('^' + version.replace(/\./g, '\\.') + '\\d+$')
-  } else if (version.startsWith("/") && version.endsWith("/")) {
+  if (version.startsWith("/") && version.endsWith("/")) {
     return new RegExp(version.slice(1, -1))
-  } else if (version.includes('*')) {
-    return new RegExp('^' + version.replace(/\./g, '\\.').replace(/\*/g, '\\d+$'))
+  }
+
+  let modifier: 'rc' | 'pre' | '' = ''
+  let isReg = false
+
+  if (version.endsWith('-rc')) {
+    modifier = 'rc'
+    version = version.slice(0, -3)
+  } else if (version.endsWith('-pre')) {
+    modifier = 'pre'
+    version = version.slice(0, -4)
+  }
+
+  if (version.includes('.*')) {
+    // . 不需要处理，后面会统一处理
+    version = version.replace(/\.\*/, '(.\\d+)?')
+    isReg = true
+  }
+
+  if (isReg || modifier) {
+    return new RegExp(`^${version.replace(/\./, '\\.')}${modifier ? `-${modifier}\\d+` : ''}$`)
   }
 
   return version

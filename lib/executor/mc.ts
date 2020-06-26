@@ -144,6 +144,7 @@ export class MinecraftExecutor {
     private storage: StorageManager,
     private tasks: TaskManager,
     private versionSelector: (version: MinecraftVersion) => boolean,
+    private verify = false
   ) {}
 
   // 运行的依赖库
@@ -161,8 +162,10 @@ export class MinecraftExecutor {
   private createCacheAssetIndex(
     assetIndex: MinecraftPackageAssetIndex,
   ): TaskExecutor {
-    return async () => {
+    return async ({startLongPhase, stopLongPhase}) => {
+      startLongPhase()
       await this.runAssetIndexCheck(assetIndex);
+      stopLongPhase()
     };
   }
 
@@ -198,6 +201,9 @@ export class MinecraftExecutor {
         }, {} as GroupTaskExecutor),
       );
 
+      const loggingUrl = mcPackage?.logging?.client?.file?.url
+      const logging = loggingUrl ? queue(`${task.name}:logging`, this.createCacheResource(loggingUrl, getLauncherEndpoint(loggingUrl))) : Promise.resolve()
+
       let libraryPromise: Promise<void>;
 
       if (await this.storage.isLock(libraryLock)) {
@@ -227,7 +233,7 @@ export class MinecraftExecutor {
       }
 
       startLongPhase();
-      await Promise.all([assetIndexRunning, downloads, libraryPromise]);
+      await Promise.all([assetIndexRunning, downloads, libraryPromise, logging]);
       stopLongPhase();
 
       await this.storage.cacheFile(target, data);
