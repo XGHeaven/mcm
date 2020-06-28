@@ -5,6 +5,7 @@ import {
   TaskManager,
   TaskExecutor,
   GroupTaskExecutor,
+  GroupTaskCollector,
 } from "../task/manager.ts";
 
 const getAssetRemoteEndpoint = (hash: string) =>
@@ -93,7 +94,7 @@ interface MinecraftPackage {
 interface MinecraftPackageLibrary {
   name: string;
   downloads: {
-    artifact: MinecraftLibraryResource;
+    artifact?: MinecraftLibraryResource;
     classifiers?: Record<string, MinecraftLibraryResource>;
   };
   rules?: any[];
@@ -210,24 +211,26 @@ export class MinecraftExecutor {
         libraryPromise = Promise.resolve();
         console.log(`Library of ${version} has been locked`);
       } else {
-        const libs: GroupTaskExecutor = {};
+        const col = new GroupTaskCollector()
 
         for (
           const { downloads: libInfo, name: libName } of mcPackage.libraries
         ) {
-          libs[
-            `${task.name}:library:${libName}`
-          ] = this.library(libInfo.artifact);
+          if (libInfo.artifact) {
+            col.collect(
+              `${task.name}:library:${libName}`
+            ,this.library(libInfo.artifact))
+          }
           if (libInfo.classifiers) {
             for (const [type, lib] of Object.entries(libInfo.classifiers)) {
-              libs[
+              col.collect(
                 `${task.name}:library:${libName}:classifiers:${type}`
-              ] = this.library(lib);
+              , this.library(lib));
             }
           }
         }
 
-        libraryPromise = queueGroup(`${task.name}:library`, libs).then(() =>
+        libraryPromise = queueGroup(`${task.name}:library`, col.group).then(() =>
           this.storage.lock(libraryLock)
         );
       }
