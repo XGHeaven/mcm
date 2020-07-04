@@ -1,6 +1,7 @@
 .idea
 .storage
 .vscode
+.cache
 
 .env
 

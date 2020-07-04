@@ -114,7 +114,7 @@ export class TaskManager {
 
   constructor(options: TaskManagerOptions = {}) {
     this.#parallel = this.#minParallel = options.parallel ?? 8;
-    this.#maxParallel = options.maxParallel ?? 32;
+    this.#maxParallel = options.maxParallel ?? this.#parallel * 4;
     this.#longTaskTimeout = options.longTaskTimeout ?? 30 * 1000;
   }
 
@@ -276,9 +276,7 @@ export class TaskManager {
     }
     return colors.gray(
       `(${group.finished}/${
-        group.error
-          ? colors.red(String(group.error))
-          : group.error
+        group.error ? colors.red(String(group.error)) : group.error
       }/${group.total})`,
     );
   }

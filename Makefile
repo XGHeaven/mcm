@@ -1,16 +1,24 @@
-.PHONY: run install format
+.PHONY: mcm install update format test bundle play
 
-run:
-	deno run
+CACHE_DIR=.cache/deno
+
+mcm:
+	DENO_DIR=$(CACHE_DIR) deno run --unstable -A ./lib/mcm.ts $(ARGS)
 
 install:
-	deno run --unstable ./lib/deps.ts
+	DENO_DIR=$(CACHE_DIR) deno cache --lock lock.json --unstable ./lib/deps.ts ./lib/prepare.ts
+
+update:
+	DENO_DIR=$(CACHE_DIR) deno cache --lock lock.json --lock-write --unstable ./lib/deps.ts ./lib/prepare.ts
 
 play:
-	deno run -A --unstable ./lib/playground.ts
+	DENO_DIR=$(CACHE_DIR) deno run -A --unstable ./lib/playground.ts
 
 format:
 	deno fmt lib/
 
 test:
-	deno test --unstable -A
+	DENO_DIR=$(CACHE_DIR) deno test --unstable -A
+
+bundle:
+	DENO_DIR=$(CACHE_DIR) deno bundle --unstable ./lib/mcm.ts mcm.js

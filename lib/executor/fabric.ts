@@ -6,6 +6,7 @@ import {
   TaskExecutor,
   GroupTaskCollector,
 } from "../task/manager.ts";
+import { matchVersion, VersionSelector } from "../utils.ts";
 
 export interface GameVersion {
   version: string;
@@ -82,7 +83,7 @@ export class FabricExecutor {
   constructor(
     private storage: StorageManager,
     private tasks: TaskManager,
-    private versionSelector: (version: GameVersion) => boolean,
+    private versionSelector: VersionSelector,
   ) {}
 
   /**
@@ -229,17 +230,46 @@ export class FabricExecutor {
 
       const gvc = new GroupTaskCollector();
 
-      for (const gameVersion of this.allVersions.game) {
-        if (this.versionSelector(gameVersion)) {
-          gvc.collect(
-            `${task.name}:${gameVersion.version}`,
-            this.createVersion(gameVersion.version),
-          );
-        }
+      const selectedVersion = this.selectVersion(this.allVersions);
+
+      for (const gameVersion of selectedVersion) {
+        gvc.collect(
+          `${task.name}:${gameVersion.version}`,
+          this.createVersion(gameVersion.version),
+        );
       }
 
       queue(`${task.name}:json`, this.updateJSON);
       queueGroup(`${task.name}:versions`, gvc.group);
+    });
+  }
+
+  private selectVersion(
+    sourceManifest: AllVersions,
+    targetManifest?: AllVersions,
+  ): GameVersion[] {
+    const { matchers, snapshot, release, latest, diff } = this.versionSelector;
+
+    if (latest) {
+      return sourceManifest.game.slice(0, 1);
+    }
+
+    return sourceManifest.game.filter((gameVersion) => {
+      let ret = matchers.some((matcher) =>
+        matchVersion(gameVersion.version, matcher)
+      );
+
+      if (ret && release) {
+        ret = !!gameVersion.stable;
+      } else if (ret && snapshot) {
+        ret = !gameVersion.stable;
+      }
+
+      if (ret && diff) {
+        console.log(`WARN: fabric cannot support "diff"`);
+      }
+
+      return ret;
     });
   }
 }

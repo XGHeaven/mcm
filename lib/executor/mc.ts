@@ -7,6 +7,7 @@ import {
   GroupTaskExecutor,
   GroupTaskCollector,
 } from "../task/manager.ts";
+import { matchVersion, VersionSelector } from "../utils.ts";
 
 const getAssetRemoteEndpoint = (hash: string) =>
   `http://resources.download.minecraft.net/${hash.substring(0, 2)}/${hash}`;
@@ -46,6 +47,8 @@ const getLibraryLockEndpoint = (version: string, hash: string) => {
 export enum MinecraftVersionType {
   RELEASE = "release",
   SNAPSHOT = "snapshot",
+  OLD_ALPHA = "old_alpha",
+  OLD_BETA = "old_beta",
 }
 
 interface MinecraftVersion {
@@ -57,7 +60,10 @@ interface MinecraftVersion {
 }
 
 interface MinecraftVersionManifest {
-  latest: Record<MinecraftVersionType, string>;
+  latest: {
+    release: string;
+    snapshot: string;
+  };
   versions: MinecraftVersion[];
 }
 
@@ -144,17 +150,8 @@ export class MinecraftExecutor {
   constructor(
     private storage: StorageManager,
     private tasks: TaskManager,
-    private versionSelector: (version: MinecraftVersion) => boolean,
-    private verify = false
+    private versionSelector: VersionSelector,
   ) {}
-
-  // 运行的依赖库
-  private library(lib: MinecraftLibraryResource) {
-    return async () => {
-      const target = getLibraryStorageEndpoint(lib.url);
-      await this.storage.cacheRemoteFile(lib.url, target);
-    };
-  }
 
   private createCacheResource(source: string, target: string): TaskExecutor {
     return async () => this.storage.cacheRemoteFile(source, target);
@@ -163,10 +160,10 @@ export class MinecraftExecutor {
   private createCacheAssetIndex(
     assetIndex: MinecraftPackageAssetIndex,
   ): TaskExecutor {
-    return async ({startLongPhase, stopLongPhase}) => {
-      startLongPhase()
+    return async ({ startLongPhase, stopLongPhase }) => {
+      startLongPhase();
       await this.runAssetIndexCheck(assetIndex);
-      stopLongPhase()
+      stopLongPhase();
     };
   }
 
@@ -202,8 +199,13 @@ export class MinecraftExecutor {
         }, {} as GroupTaskExecutor),
       );
 
-      const loggingUrl = mcPackage?.logging?.client?.file?.url
-      const logging = loggingUrl ? queue(`${task.name}:logging`, this.createCacheResource(loggingUrl, getLauncherEndpoint(loggingUrl))) : Promise.resolve()
+      const loggingUrl = mcPackage?.logging?.client?.file?.url;
+      const logging = loggingUrl
+        ? queue(
+          `${task.name}:logging`,
+          this.createCacheResource(loggingUrl, getLauncherEndpoint(loggingUrl)),
+        )
+        : Promise.resolve();
 
       let libraryPromise: Promise<void>;
 
@@ -236,7 +238,9 @@ export class MinecraftExecutor {
       }
 
       startLongPhase();
-      await Promise.all([assetIndexRunning, downloads, libraryPromise, logging]);
+      await Promise.all(
+        [assetIndexRunning, downloads, libraryPromise, logging],
+      );
       stopLongPhase();
 
       await this.storage.cacheFile(target, data);
@@ -254,8 +258,9 @@ export class MinecraftExecutor {
           targetManifest.versions.map((ver) => ver.id),
         );
 
-        const selectedVersionMetas = manifest.versions.filter(
-          this.versionSelector,
+        const selectedVersionMetas = this.selectVersion(
+          manifest,
+          targetManifest,
         );
         const successSyncSet = new Set<string>();
         const errorSyncSet = new Set<string>();
@@ -346,6 +351,94 @@ export class MinecraftExecutor {
         }
       },
     );
+  }
+
+  async executeList() {
+    const [, manifest] = await fetchMinecraftVersionManifest();
+    const targetManifest = await this.readTargetMinecraftMeta();
+    const selectedVersionMetas = this.selectVersion(manifest, targetManifest);
+
+    for (const verMeta of selectedVersionMetas) {
+      console.log(
+        `${colors.green("list")} minecraft ${verMeta.id} ${
+          verMeta.type !== MinecraftVersionType.RELEASE
+            ? colors.gray(verMeta.type)
+            : ""
+        }`,
+      );
+    }
+  }
+
+  private selectVersion(
+    sourceManifest: MinecraftVersionManifest,
+    targetManifest?: MinecraftVersionManifest,
+  ): MinecraftVersion[] {
+    const { matchers, release, diff, snapshot, latest, old } =
+      this.versionSelector;
+    if (latest) {
+      // 如果选择了最新的，忽略所有 matcher
+      const selected: MinecraftVersion[] = [];
+      if (release && sourceManifest.latest.release) {
+        const ver = sourceManifest.versions.find((ver) =>
+          ver.id === sourceManifest.latest.release
+        );
+        if (ver) {
+          selected.push(ver);
+        }
+      }
+
+      if (snapshot && sourceManifest.latest.snapshot) {
+        const ver = sourceManifest.versions.find((ver) =>
+          ver.id === sourceManifest.latest.snapshot
+        );
+        if (ver) {
+          selected.push(ver);
+        }
+      }
+
+      if (old) {
+        console.log(`old beta cannot have latest version`);
+      }
+
+      return selected;
+    }
+
+    return sourceManifest.versions.filter((ver) => {
+      let ret = matchers.some((matcher) => matchVersion(ver.id, matcher));
+
+      if (ret) {
+        switch (ver.type) {
+          case MinecraftVersionType.SNAPSHOT:
+            ret = snapshot;
+            break;
+          case MinecraftVersionType.RELEASE:
+            ret = release;
+            break;
+          case MinecraftVersionType.OLD_BETA:
+          case MinecraftVersionType.OLD_ALPHA:
+            ret = old;
+            break;
+        }
+      }
+
+      if (ret && diff && targetManifest) {
+        const targetVer = targetManifest.versions.find((v) => v.id === ver.id);
+        if (targetVer) {
+          ret = targetVer.url !== ver.url ||
+            targetVer.releaseTime !== ver.releaseTime;
+        }
+      }
+
+      return ret;
+    });
+  }
+
+  // 运行的依赖库
+  private library(lib: MinecraftLibraryResource) {
+    return async () => {
+      const target = getLibraryStorageEndpoint(lib.url);
+      await this.storage.cacheRemoteFile(lib.url, target);
+    };
   }
 
   private async readTargetMinecraftMeta(): Promise<MinecraftVersionManifest> {
