@@ -1,0 +1,1 @@
+import './lib/bin.ts'

@@ -9,6 +9,7 @@ interface TaskContext {
     exeMap: GroupTaskExecutor,
     bailout?: boolean,
   ) => Promise<void>;
+  waitTask: (taskPromise: Promise<any>) => Promise<void>,
   task: Task;
 }
 
@@ -31,6 +32,8 @@ interface Task {
   startTime: number;
   inLongPhase: boolean;
   longTaskTimer: number;
+  // 长任务超时次数
+  longTaskCount: number
   group: Group | null;
 }
 
@@ -60,6 +63,7 @@ function createTask(
     startTime: 0,
     inLongPhase: false,
     longTaskTimer: 0,
+    longTaskCount: 0,
     group,
   };
 }
@@ -105,7 +109,6 @@ interface TaskManagerOptions {
 
 export class TaskManager {
   #minParallel = 8;
-  #maxParallel = 8;
   #parallel = 8;
   #running = 0;
   #tasks: Task[] = [];
@@ -114,7 +117,6 @@ export class TaskManager {
 
   constructor(options: TaskManagerOptions = {}) {
     this.#parallel = this.#minParallel = options.parallel ?? 8;
-    this.#maxParallel = options.maxParallel ?? this.#parallel * 4;
     this.#longTaskTimeout = options.longTaskTimeout ?? 30 * 1000;
   }
 
@@ -173,12 +175,27 @@ export class TaskManager {
     if (task.inLongPhase) {
       task.inLongPhase = false;
       this.changeParallel(-1);
+      task.longTaskCount = 0
+      task.longTaskTimer = setTimeout(
+        this._reportLongTask.bind(this, task),
+        this.#longTaskTimeout,
+      )
     }
   }
 
   private _reportLongTask(task: Task) {
-    console.warn(`${colors.yellow("timeout")} ${task.name} running over 30s`);
-    // TODO shrink parallel
+    task.longTaskCount += 1
+    console.warn(`${colors.yellow("timeout")} ${task.name} running over ${Math.floor(this.#longTaskTimeout * task.longTaskCount / 1000)}s`);
+    task.longTaskTimer = setTimeout(
+      this._reportLongTask.bind(this, task),
+      this.#longTaskTimeout,
+    )
+  }
+
+  private async _waitTask(task: Task, promise: Promise<void>): Promise<void> {
+    this._startLongPhase(task)
+    await promise
+    this._stopLongPhase(task)
   }
 
   private _runTask(task: Task) {
@@ -192,6 +209,7 @@ export class TaskManager {
         stopLongPhase: this._stopLongPhase.bind(this, task),
         queue: this.queue.bind(this),
         queueGroup: this.queueGroup.bind(this),
+        waitTask: this._waitTask.bind(this, task),
         task,
       })
     );
@@ -243,13 +261,16 @@ export class TaskManager {
 
   private _finishOneOfGroup(group: Group) {
     if (group.bailout && group.error) {
-      group.defer.reject(new Error(`Group ${group.name} bailout`));
       // 并且把相关的 task 全部清除，不管是正在运行的还是没在运行的
       for (const task of this.#tasks.slice(0)) {
         if (task.group === group) {
           this._removeTask(task);
         }
       }
+
+      // TODO: 至少要等待所有正在运行的任务结束之后再 reject
+      group.defer.reject(new Error(`Group ${group.name} bailout`));
+
       return;
     }
 
@@ -282,10 +303,8 @@ export class TaskManager {
   }
 
   private changeParallel(delta: number) {
-    this.#parallel = Math.min(
-      Math.max(this.#parallel + delta, this.#minParallel),
-      this.#maxParallel,
-    );
+    // 扩张的话无需设置上限，因为扩张说明任务的所有权已经移交出去了
+    this.#parallel = Math.max(this.#parallel + delta, this.#minParallel)
     Promise.resolve().then(() => this.run());
   }
 

@@ -1,4 +1,4 @@
-import { TaskManager } from "./manager.ts";
+import { TaskExecutor, TaskManager } from "./manager.ts";
 import { async, asserts } from "../deps.ts";
 
 let tm: TaskManager;
@@ -11,6 +11,34 @@ Deno.test("normal usage", async () => {
   setup();
   await tm.queue("test", () => {});
 });
+
+Deno.test('too many long task', async () => {
+  tm = new TaskManager({parallel: 1});
+
+  const defer = async.deferred()
+  let count = 0
+
+  const longTask: TaskExecutor = async ({startLongPhase, stopLongPhase, task}) => {
+    startLongPhase()
+    count += 1
+    await tm.queue(`${task.name}:child`, async () => {
+      await async.delay(50)
+    })
+    count += 1
+    stopLongPhase()
+  }
+
+  const promises: any[] = []
+  for (let i = 0; i < 10; i++) {
+    promises.push(tm.queue(`long-task:${i}`, longTask))
+  }
+
+  await async.delay(100)
+  defer.resolve()
+
+  await tm.waitAllFinished()
+  asserts.assertEquals(count, 20)
+})
 
 Deno.test("wait child", async () => {
   setup();

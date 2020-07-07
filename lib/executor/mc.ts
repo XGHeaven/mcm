@@ -1,6 +1,6 @@
 import { fetchBinaryAndJson } from "../service.ts";
 import { StorageManager } from "../storage.ts";
-import { path, sha1, colors } from "../deps.ts";
+import { path, colors, hash } from "../deps.ts";
 import {
   TaskManager,
   TaskExecutor,
@@ -160,10 +160,8 @@ export class MinecraftExecutor {
   private createCacheAssetIndex(
     assetIndex: MinecraftPackageAssetIndex,
   ): TaskExecutor {
-    return async ({ startLongPhase, stopLongPhase }) => {
-      startLongPhase();
-      await this.runAssetIndexCheck(assetIndex);
-      stopLongPhase();
+    return async ({ waitTask }) => {
+      await waitTask(this.runAssetIndexCheck(assetIndex));
     };
   }
 
@@ -174,7 +172,7 @@ export class MinecraftExecutor {
     const libraryLock = getLibraryLockEndpoint(version, versionHash);
 
     return async (
-      { queue, task, queueGroup, startLongPhase, stopLongPhase },
+      { queue, task, queueGroup, waitTask },
     ) => {
       if (await this.storage.exist(target)) {
         console.log(`Version ${version} has been cached, skip...`);
@@ -237,11 +235,9 @@ export class MinecraftExecutor {
         );
       }
 
-      startLongPhase();
-      await Promise.all(
+      await waitTask(Promise.all(
         [assetIndexRunning, downloads, libraryPromise, logging],
-      );
-      stopLongPhase();
+      ));
 
       await this.storage.cacheFile(target, data);
     };
@@ -250,7 +246,7 @@ export class MinecraftExecutor {
   execute() {
     return this.tasks.queue(
       "minecraft",
-      async ({ startLongPhase, stopLongPhase, task, queue }) => {
+      async ({ waitTask, task, queue }) => {
         const [, manifest] = await fetchMinecraftVersionManifest();
         const targetManifest = await this.readTargetMinecraftMeta();
 
@@ -264,6 +260,7 @@ export class MinecraftExecutor {
         );
         const successSyncSet = new Set<string>();
         const errorSyncSet = new Set<string>();
+        const errorMap = new Map<string, any>()
 
         const pros: any[] = [];
         for (const ver of selectedVersionMetas) {
@@ -274,14 +271,13 @@ export class MinecraftExecutor {
               },
               (e) => {
                 errorSyncSet.add(ver.id);
+                errorMap.set(ver.id, e)
               },
             ),
           );
         }
 
-        startLongPhase();
-        await Promise.all(pros);
-        stopLongPhase();
+        await waitTask(Promise.all(pros));
 
         // 版本更新有两个策略
         // 针对没有更新过的版本，直接对其进行更新，并返回远端的元信息
@@ -335,12 +331,12 @@ export class MinecraftExecutor {
         );
         if (errorSyncSet.size) {
           console.log(
-            `Sync error for ${
-              Array.from(errorSyncSet.values()).map((v) => colors.cyan(v)).join(
-                ", ",
-              )
-            } sync error`,
+            `${colors.red('sync error')}:`,
           );
+          for (const id of errorSyncSet) {
+            const error = errorMap.get(id)
+            console.log(`${colors.red('-')} ${colors.cyan(id)} ${error && error.message}`)
+          }
         } else {
           console.log(
             `Sync success for ${
@@ -360,7 +356,7 @@ export class MinecraftExecutor {
 
     for (const verMeta of selectedVersionMetas) {
       console.log(
-        `${colors.green("list")} minecraft ${verMeta.id} ${
+        `${colors.green("list")} minecraft ${verMeta.id} \t${colors.bold(targetManifest.versions.find(ver => ver.id === verMeta.id) ? 'synced' : 'no-sync')}\t ${
           verMeta.type !== MinecraftVersionType.RELEASE
             ? colors.gray(verMeta.type)
             : ""
@@ -456,33 +452,33 @@ export class MinecraftExecutor {
   }
 
   private runAssetIndexCheck(
-    { sha1: hash, id, url: source }: MinecraftPackageAssetIndex,
+    { sha1: expectHash, id, url: source }: MinecraftPackageAssetIndex,
   ) {
-    if (this.assetIndexCache.get(hash)) {
-      return this.assetIndexCache.get(hash);
+    if (this.assetIndexCache.get(expectHash)) {
+      return this.assetIndexCache.get(expectHash)!;
     }
 
     const target = getMetaStorageEndpoint(source);
 
     const promise = this.tasks.queue(
       `minecraft:asset-index:${id}`,
-      async ({ queueGroup, task, startLongPhase, stopLongPhase }) => {
+      async ({ queueGroup, task, waitTask }) => {
         if (await this.storage.exist(target)) {
           console.log(
-            `Asset of ${id}(${hash}) has been locked`,
+            `Asset of ${id}(${expectHash}) has been locked`,
           );
           return;
         }
 
         const [data, json] = await fetchBinaryAndJson(source);
 
-        const actualHash = sha1(data, "", "hex") as string;
-        if (hash !== actualHash) {
+        const actualHash = hash.createHash('sha1').update(data).toString('hex');
+        if (expectHash !== actualHash) {
           console.error(
             `(${id}) Fetch asset index maybe not correct, hash is not matched.`,
           );
           console.error(
-            `  ${hash}(expected) !== ${actualHash}(actual)`,
+            `  ${expectHash}(expected) !== ${actualHash}(actual)`,
           );
           console.error(`  Please restart sync again`);
           throw new Error(`${id} hash check failed`);
@@ -499,10 +495,8 @@ export class MinecraftExecutor {
           );
         }
 
-        startLongPhase();
         // 只要有一个资源下载失败，就没有必要再尝试下去了
-        await queueGroup(`${task.name}:assets`, exes, true);
-        stopLongPhase();
+        await waitTask(queueGroup(`${task.name}:assets`, exes, true));
 
         await this.storage.cacheFile(
           target,
@@ -511,7 +505,7 @@ export class MinecraftExecutor {
       },
     );
 
-    this.assetIndexCache.set(hash, promise);
+    this.assetIndexCache.set(expectHash, promise);
     return promise;
   }
 }

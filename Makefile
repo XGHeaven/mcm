@@ -3,7 +3,7 @@
 CACHE_DIR=.cache/deno
 
 mcm:
-	DENO_DIR=$(CACHE_DIR) deno run --unstable -A ./lib/mcm.ts $(ARGS)
+	DENO_DIR=$(CACHE_DIR) deno run --lock lock.json --unstable -A ./lib/bin.dev.ts $(ARGS)
 
 install:
 	DENO_DIR=$(CACHE_DIR) deno cache --lock lock.json --unstable ./lib/deps.ts ./lib/prepare.ts

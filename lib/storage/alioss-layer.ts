@@ -1,6 +1,6 @@
 import { LayerWriteOptions, StorageLayer } from "./layer.ts";
-import { hmac, md5, path, hash } from "../deps.ts";
-import { byteToString, encodeKey } from "../utils.ts";
+import { hmac, path, hash } from "../deps.ts";
+import { encodeKey } from "../utils.ts";
 
 function buildCanonicalizedResource(
   resourcePath: string,

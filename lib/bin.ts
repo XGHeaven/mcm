@@ -1,6 +1,4 @@
-import "./prepare.ts";
-
-import { colors } from "./deps.ts";
+import { colors, flags } from "./deps.ts";
 import { StorageManager } from "./storage.ts";
 import { MinecraftExecutor } from "./executor/mc.ts";
 import { FabricExecutor } from "./executor/fabric.ts";
@@ -10,13 +8,21 @@ import { StorageLayer } from "./storage/layer.ts";
 import { FsLayer } from "./storage/fs-layer.ts";
 import { AliOSSLayer } from "./storage/alioss-layer.ts";
 
-const args = Deno.args.slice(0);
-let storageType = Deno.env.get("STORAGE_TYPE") || "";
-let storageOptions = Deno.env.get("STORAGE_OPTIONS") || "";
-let listOnly = false;
-let parallel = 8;
+const args = flags.parse(Deno.args, {
+  string: ['storage-type', 'storage-options'],
+  boolean: ['help', 'list-only', 'verify'],
+  alias: {
+    help: ['h']
+  },
+  default: {
+    parallel: 8
+  }
+})
 
-if (args[0] === "--help" || args[0] === "-h" || args.length === 0) {
+const listOnly = args['list-only'] || false;
+const parallel = parseInt(args['parallel'], 10) || 8;
+
+if (args['help'] || args['_'].length === 0) {
   const version = colors.yellow("<version>");
   console.log([
     `mcm [options] <...commands>`,
@@ -57,37 +63,9 @@ if (args[0] === "--help" || args[0] === "-h" || args.length === 0) {
   Deno.exit(0);
 }
 
-const commands: string[] = [];
-
-while (args.length > 0) {
-  const v = args[0];
-  switch (v) {
-    case "--storage-type":
-      args.shift();
-      storageType = args[0];
-      break;
-    case "--storage-options":
-      args.shift();
-      storageOptions = args[0];
-      break;
-    case "--list-only":
-      listOnly = true;
-      break;
-    case "--parallel":
-      args.shift();
-      parallel = parseInt(args[0], 10);
-      break;
-    default:
-      // command
-      commands.push(v);
-  }
-  args.shift();
-}
-
-if (!commands.length) {
-  console.error("Please give a command");
-  Deno.exit(0);
-}
+const commands: string[] = args['_'] as string[];
+const storageType = Deno.env.get("STORAGE_TYPE") || args['storage-type'] || '';
+const storageOptions = Deno.env.get("STORAGE_OPTIONS") || args['storage-options'] || "";
 
 let layer: StorageLayer;
 
