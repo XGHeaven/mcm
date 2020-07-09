@@ -151,6 +151,7 @@ export class MinecraftExecutor {
     private storage: StorageManager,
     private tasks: TaskManager,
     private versionSelector: VersionSelector,
+    private options: {verify?: boolean, ignoreLock?:boolean} = {}
   ) {}
 
   private createCacheResource(source: string, target: string): TaskExecutor {
@@ -172,9 +173,9 @@ export class MinecraftExecutor {
     const libraryLock = getLibraryLockEndpoint(version, versionHash);
 
     return async (
-      { queue, task, queueGroup, waitTask },
+      { queue, queueGroup, waitTask },
     ) => {
-      if (await this.storage.exist(target)) {
+      if (!this.options.ignoreLock && await this.storage.exist(target)) {
         console.log(`Version ${version} has been cached, skip...`);
         return;
       }
@@ -182,14 +183,14 @@ export class MinecraftExecutor {
       const [data, mcPackage] = await fetchMinecraftPackage(source);
 
       const assetIndexRunning = queue(
-        `${task.name}:assetIndex`,
+        `assetIndex`,
         this.createCacheAssetIndex(mcPackage.assetIndex),
       );
 
       const downloads = queueGroup(
-        `${task.name}:downloads`,
+        `downloads`,
         Object.entries(mcPackage.downloads).reduce((exes, [type, download]) => {
-          exes[`${task.name}:downloads:${type}`] = this.createCacheResource(
+          exes[`${type}`] = this.createCacheResource(
             download.url,
             getLauncherEndpoint(download.url),
           );
@@ -200,14 +201,14 @@ export class MinecraftExecutor {
       const loggingUrl = mcPackage?.logging?.client?.file?.url;
       const logging = loggingUrl
         ? queue(
-          `${task.name}:logging`,
+          `logging`,
           this.createCacheResource(loggingUrl, getLauncherEndpoint(loggingUrl)),
         )
         : Promise.resolve();
 
       let libraryPromise: Promise<void>;
 
-      if (await this.storage.isLock(libraryLock)) {
+      if (!this.options.ignoreLock && await this.storage.isLock(libraryLock)) {
         libraryPromise = Promise.resolve();
         console.log(`Library of ${version} has been locked`);
       } else {
@@ -218,19 +219,19 @@ export class MinecraftExecutor {
         ) {
           if (libInfo.artifact) {
             col.collect(
-              `${task.name}:library:${libName}`
+              `${libName}`
             ,this.library(libInfo.artifact))
           }
           if (libInfo.classifiers) {
             for (const [type, lib] of Object.entries(libInfo.classifiers)) {
               col.collect(
-                `${task.name}:library:${libName}:classifiers:${type}`
+                `${libName}:classifiers:${type}`
               , this.library(lib));
             }
           }
         }
 
-        libraryPromise = queueGroup(`${task.name}:library`, col.group).then(() =>
+        libraryPromise = queueGroup(`library`, col.group).then(() =>
           this.storage.lock(libraryLock)
         );
       }
@@ -239,14 +240,14 @@ export class MinecraftExecutor {
         [assetIndexRunning, downloads, libraryPromise, logging],
       ));
 
-      await this.storage.cacheFile(target, data);
+      await this.storage.cacheJSON(target, data);
     };
   }
 
   execute() {
     return this.tasks.queue(
       "minecraft",
-      async ({ waitTask, task, queue }) => {
+      async ({ waitTask, queue }) => {
         const [, manifest] = await fetchMinecraftVersionManifest();
         const targetManifest = await this.readTargetMinecraftMeta();
 
@@ -265,7 +266,7 @@ export class MinecraftExecutor {
         const pros: any[] = [];
         for (const ver of selectedVersionMetas) {
           pros.push(
-            queue(`${task.name}:${ver.id}`, this.createVersion(ver)).then(
+            queue(`${ver.id}`, this.createVersion(ver)).then(
               () => {
                 successSyncSet.add(ver.id);
               },
@@ -462,8 +463,8 @@ export class MinecraftExecutor {
 
     const promise = this.tasks.queue(
       `minecraft:asset-index:${id}`,
-      async ({ queueGroup, task, waitTask }) => {
-        if (await this.storage.exist(target)) {
+      async ({ queueGroup, waitTask }) => {
+        if (!this.options.ignoreLock && await this.storage.exist(target)) {
           console.log(
             `Asset of ${id}(${expectHash}) has been locked`,
           );
@@ -488,7 +489,7 @@ export class MinecraftExecutor {
 
         for (const { hash } of Object.values(json.objects) as any[]) {
           exes[
-            `${task.name}:${hash}`
+            `${hash}`
           ] = this.createCacheResource(
             getAssetRemoteEndpoint(hash),
             getAssetStorageEndpoint(hash),
@@ -496,9 +497,9 @@ export class MinecraftExecutor {
         }
 
         // 只要有一个资源下载失败，就没有必要再尝试下去了
-        await waitTask(queueGroup(`${task.name}:assets`, exes, true));
+        await waitTask(queueGroup(`assets`, exes, true));
 
-        await this.storage.cacheFile(
+        await this.storage.cacheJSON(
           target,
           data,
         );

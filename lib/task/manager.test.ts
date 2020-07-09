@@ -7,12 +7,18 @@ function setup() {
   tm = new TaskManager();
 }
 
-Deno.test("normal usage", async () => {
+Deno.test({
+  name: "normal usage",
+  async fn() {
   setup();
-  await tm.queue("test", () => {});
-});
+  let a = 0
+  await tm.queue("test", () => {
+    a++
+  });
+  asserts.assertEquals(a, 1)
+}});
 
-Deno.test('too many long task', async () => {
+Deno.test({name: 'too many long task', async fn() {
   tm = new TaskManager({parallel: 1});
 
   const defer = async.deferred()
@@ -38,7 +44,7 @@ Deno.test('too many long task', async () => {
 
   await tm.waitAllFinished()
   asserts.assertEquals(count, 20)
-})
+}})
 
 Deno.test("wait child", async () => {
   setup();
@@ -128,13 +134,78 @@ Deno.test("group bailout", async () => {
   let step = "";
   await tm.queueGroup("group-bailout", {
     a: () => {
-      step += "e";
-      throw new Error();
+      step += 'a'
     },
     b: () => {
-      step += "e";
+      step += "b";
+      throw new Error();
     },
-  }, true).catch(() => {});
+    c: () => {
+      step += "c";
+    },
+  }, true).catch(() => {
+    step += 'e'
+  });
 
-  asserts.assertEquals(step, "e");
+  asserts.assertEquals(step, "abe");
+
+  step = ''
+
+  await tm.queueGroup('group-bailout', {
+    a: () => {
+      step += 'a'
+    },
+    b: () => {
+      step += 'b'
+    }
+  }, true).catch(() => {
+    step += 'e'
+  });
+
+  asserts.assertEquals(step, 'ab')
 });
+
+Deno.test({
+  name: 'should try to run child first',
+  async fn() {
+    tm = new TaskManager({parallel: 1})
+
+    const exe: TaskExecutor = async ({task, queue, waitTask}) => {
+      step += task.name
+      await waitTask(queue('child', async () => {
+        step += task.name + 'c'
+      }))
+    }
+
+    let step = ''
+    tm.queue('a', exe)
+    tm.queue('b', exe)
+    await tm.waitAllFinished()
+
+    asserts.assertEquals(step, 'aacbbc')
+  }
+})
+
+Deno.test({
+  name: 'should move child task to head of root when task finished',
+  async fn() {
+    tm = new TaskManager({parallel: 1})
+
+    let step = ''
+    const exe: TaskExecutor = async ({queue, task}) => {
+      step += task.name
+      queue('c1', async() => {
+        step += task.name + 'c1'
+      })
+      queue('c2', async () => {
+        step += task.name + 'c2'
+      })
+    }
+
+    tm.queue('a', exe)
+    tm.queue('b', exe)
+    await tm.waitAllFinished()
+
+    asserts.assertEquals(step, 'aac1ac2bbc1bc2')
+  }
+})

@@ -10,7 +10,7 @@ import { AliOSSLayer } from "./storage/alioss-layer.ts";
 
 const args = flags.parse(Deno.args, {
   string: ['storage-type', 'storage-options'],
-  boolean: ['help', 'list-only', 'verify'],
+  boolean: ['help', 'list-only', 'verify', 'ignore-lock'],
   alias: {
     help: ['h']
   },
@@ -48,6 +48,7 @@ if (args['help'] || args['_'].length === 0) {
     `Options`,
     `  --verify \t Verify version sync is correct`,
     `  --list-only \t only list version needed to sync`,
+    `  --ignore-lock \t Ignore lock file`
     ,
     `Task Options`,
     `  --parallel <number> \t task parallel count, default 8`,
@@ -124,6 +125,10 @@ if (mcCommands.size) {
     storage,
     tasks,
     parseVersionSelector(Array.from(mcCommands.values())),
+    {
+      verify: !!args.verify,
+      ignoreLock: !!args['ignore-lock']
+    }
   );
 
   if (listOnly) {

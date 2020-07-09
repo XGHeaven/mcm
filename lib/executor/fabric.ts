@@ -137,7 +137,7 @@ export class FabricExecutor {
 
   // 根据游戏版本获取对应的 Loader，并递归获取下面的 loader 的 meta
   createLoaderOfGame(gameVersion: string): TaskExecutor {
-    return async ({ queue, task }) => {
+    return async ({ queue }) => {
       const [source, target] = this.getMetaPairPath(`/loader/${gameVersion}`);
       const [data, loaders] = await fetchBinaryAndJson<
         Array<{
@@ -163,7 +163,7 @@ export class FabricExecutor {
         launcherMeta.libraries.client.forEach(collectMaven);
         launcherMeta.libraries.server.forEach(collectMaven);
 
-        queue(`${task.name}:${loader.version}`, async () => {
+        queue(`${loader.version}`, async () => {
           const [source, target] = this.getMetaPairPath(
             `/loader/${gameVersion}/${loader.version}`,
           );
@@ -172,7 +172,7 @@ export class FabricExecutor {
       }
 
       for (const maven of mavenSet) {
-        queue(`${task.name}:maven:${maven}`, this.createMavenJar(maven));
+        queue(`maven:${maven}`, this.createMavenJar(maven));
       }
 
       await this.storage.cacheJSON(target, data, true);
@@ -191,14 +191,14 @@ export class FabricExecutor {
 
   createVersion(version: string): TaskExecutor {
     return async (
-      { queue, task, queueGroup, startLongPhase, stopLongPhase },
+      { queue, queueGroup },
     ) => {
       queue(
-        `${task.name}:loader:${version}`,
+        `loader:${version}`,
         this.createLoaderOfGame(version),
       );
       queue(
-        `${task.name}:intermediary:${version}`,
+        `intermediary:${version}`,
         this.createIntermediaryOfGame(version),
       );
 
@@ -207,18 +207,18 @@ export class FabricExecutor {
       for (const mapping of this.allVersions.mappings) {
         if (mapping.gameVersion === version) {
           col.collect(
-            `${task.name}:${mapping.version}`,
+            `${mapping.version}`,
             this.createMavenJar(mapping.maven),
           );
         }
       }
 
-      queueGroup(`${task.name}:mappings`, col.group);
+      queueGroup(`mappings`, col.group);
     };
   }
 
   execute() {
-    return this.tasks.queue("fabric", async ({ queue, queueGroup, task }) => {
+    return this.tasks.queue("fabric", async ({ queue, queueGroup }) => {
       if (!this.allVersions) {
         const [source, target] = this.getMetaPairPath();
         const [data, allVersions] = await fetchBinaryAndJson<AllVersions>(
@@ -234,13 +234,13 @@ export class FabricExecutor {
 
       for (const gameVersion of selectedVersion) {
         gvc.collect(
-          `${task.name}:${gameVersion.version}`,
+          `${gameVersion.version}`,
           this.createVersion(gameVersion.version),
         );
       }
 
-      queue(`${task.name}:json`, this.updateJSON);
-      queueGroup(`${task.name}:versions`, gvc.group);
+      queue(`json`, this.updateJSON);
+      queueGroup(`versions`, gvc.group);
     });
   }
 
@@ -266,7 +266,7 @@ export class FabricExecutor {
       }
 
       if (ret && diff) {
-        console.log(`WARN: fabric cannot support "diff"`);
+        console.log(`WARN: fabric cannot support "diff" now`);
       }
 
       return ret;
