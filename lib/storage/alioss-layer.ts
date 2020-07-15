@@ -116,6 +116,7 @@ export class AliOSSLayer extends StorageLayer {
       signHeader["content-md5"] = hash.createHash("md5").update(data).toString(
         "base64",
       );
+      signHeader['content-length'] = `${data.byteLength}`
     }
 
     const signResult = computeSignature(
