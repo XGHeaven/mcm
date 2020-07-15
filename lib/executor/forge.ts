@@ -1,4 +1,4 @@
-import { StorageManager } from "../storage.ts";
+import { Storage } from "../storage.ts";
 import {
   TaskExecutor,
   TaskManager,
@@ -106,7 +106,7 @@ export class ForgeExecutor {
   static installProfileLock = (fullVersion: string) =>
     `${ForgeExecutor.Prefix}/lock/${fullVersion}/install_profile.lock`;
 
-  #storage: StorageManager;
+  #storage: Storage;
   #tasks: TaskManager;
   #versionSelector: VersionSelector;
   #verify: boolean = false;
@@ -116,7 +116,7 @@ export class ForgeExecutor {
 
   constructor(
     config: {
-      storage: StorageManager;
+      storage: Storage;
       tasks: TaskManager;
       versionSelector: VersionSelector;
       verify?: boolean;
@@ -229,7 +229,7 @@ export class ForgeExecutor {
         !await this.#storage.isLock(installerLock)
       ) {
         const jarData = this.#installerJarCache.get(version) ??
-          await this.#storage.layer.read(
+          await this.#storage.read(
             ForgeExecutor.targetForgeFile(version, "installer", "jar"),
           );
         const profile = await getInstallProfileJSON(jarData);
@@ -267,7 +267,7 @@ export class ForgeExecutor {
         if (!await this.#storage.exist(target)) {
           const resp = await fetchAndRetry(source);
           const jarData = new Uint8Array(await resp.arrayBuffer());
-          await this.#storage.layer.write(
+          await this.#storage.write(
             target,
             jarData,
             { type: resp.headers.get("content.type") || "" },
@@ -286,18 +286,20 @@ export class ForgeExecutor {
   ): TaskExecutor {
     return async ({ waitTask, queue }) => {
       await waitTask(
-        Promise.all(forgeVersions.map((version) =>
-          queue(`${version}`, this.createForgeVersion(version))
-        )),
+        Promise.all(
+          forgeVersions.map((version) =>
+            queue(`${version}`, this.createForgeVersion(version))
+          ),
+        ),
       );
     };
   }
 
   private async readTargetVersions(): Promise<ForgeVersions> {
-    if (await this.#storage.layer.exist(ForgeExecutor.TargetVersionUrl)) {
+    if (await this.#storage.exist(ForgeExecutor.TargetVersionUrl)) {
       return JSON.parse(
         byteToString(
-          await this.#storage.layer.read(ForgeExecutor.TargetVersionUrl),
+          await this.#storage.read(ForgeExecutor.TargetVersionUrl),
         ),
       );
     }

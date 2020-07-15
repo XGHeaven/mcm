@@ -1,5 +1,5 @@
 import { fetchBinaryAndJson } from "../service.ts";
-import { StorageManager } from "../storage.ts";
+import { Storage } from "../storage.ts";
 import { colors, hash, path } from "../deps.ts";
 import {
   GroupTaskExecutor,
@@ -150,7 +150,7 @@ export class MinecraftExecutor {
   private assetIndexCache = new Map<string, Promise<void>>();
 
   constructor(
-    private storage: StorageManager,
+    private storage: Storage,
     private tasks: TaskManager,
     private versionSelector: VersionSelector,
     private options: { verify?: boolean; ignoreLock?: boolean } = {},
@@ -438,7 +438,7 @@ export class MinecraftExecutor {
   private async readTargetMinecraftMeta(): Promise<MinecraftVersionManifest> {
     if (await this.storage.exist(minecraftMetaTarget)) {
       return JSON.parse(
-        byteToString(await this.storage.layer.read(minecraftMetaTarget)),
+        byteToString(await this.storage.read(minecraftMetaTarget)),
       );
     }
 

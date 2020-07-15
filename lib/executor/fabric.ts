@@ -1,4 +1,4 @@
-import { StorageManager } from "../storage.ts";
+import { Storage } from "../storage.ts";
 import { fetchBinaryAndJson } from "../service.ts";
 import { path } from "../deps.ts";
 import {
@@ -81,7 +81,7 @@ export class FabricExecutor {
   private allVersions!: AllVersions;
 
   constructor(
-    private storage: StorageManager,
+    private storage: Storage,
     private tasks: TaskManager,
     private versionSelector: VersionSelector,
   ) {}
@@ -95,7 +95,7 @@ export class FabricExecutor {
     const url = new URL(FabricExecutor.FabricMetaHost);
     const pathname = path.join(FabricExecutor.UrlPrefix, uri);
     url.pathname = pathname;
-    const ext = this.storage.layer.isSupportSameFileFolder() ? "" : ".json";
+    const ext = this.storage.isSupportSameFileFolder() ? "" : ".json";
     return [
       url.toString(),
       path.join(FabricExecutor.MetaEndpoint, pathname) + ext,

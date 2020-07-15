@@ -1,12 +1,17 @@
 import { colors, flags } from "./deps.ts";
-import { StorageManager } from "./storage.ts";
-import { MinecraftExecutor } from "./executor/mc.ts";
-import { FabricExecutor } from "./executor/fabric.ts";
-import { parseVersionSelector } from "./utils.ts";
+
 import { TaskManager } from "./task/manager.ts";
+import { parseVersionSelector } from "./utils.ts";
+
+// storage
+import { Storage } from "./storage.ts";
+import { AliOSSLayer } from "./storage/alioss-layer.ts";
 import { StorageLayer } from "./storage/layer.ts";
 import { FsLayer } from "./storage/fs-layer.ts";
-import { AliOSSLayer } from "./storage/alioss-layer.ts";
+
+// executor
+import { MinecraftExecutor } from "./executor/mc.ts";
+import { FabricExecutor } from "./executor/fabric.ts";
 import { ForgeExecutor } from "./executor/forge.ts";
 
 const args = flags.parse(Deno.args, {
@@ -39,7 +44,7 @@ if (args["help"] || args["_"].length === 0) {
     `    ${colors.cyan("1.14-rc")} \t\t match 1.14-rc1 1.14-rc2 etc`,
     `    ${colors.cyan("1.14.*")} \t\t match 1.14.1 1.14.2 etc`,
     `    ${colors.cyan("/^1\\.16.*$/")} \t regexp version`,
-    `    ${colors.cyan("release")} all release version`,
+    `    ${colors.cyan("release")} \t\t all release version`,
     `    ${colors.cyan("snapshot")} \t\t only snapshot version`,
     `    ${
       colors.cyan("old")
@@ -51,6 +56,7 @@ if (args["help"] || args["_"].length === 0) {
     `  --verify \t Verify version sync is correct`,
     `  --list-only \t only list version needed to sync`,
     `  --ignore-lock \t Ignore lock file`,
+    ``,
     `Task Options`,
     `  --parallel <number> \t task parallel count, default 8`,
     ,
@@ -101,7 +107,7 @@ switch (storageType) {
 const tasks = new TaskManager({
   parallel,
 });
-const storage = new StorageManager(layer);
+const storage = new Storage(layer);
 
 const mcCommands = new Set<string>();
 const fabricCommands = new Set<string>();

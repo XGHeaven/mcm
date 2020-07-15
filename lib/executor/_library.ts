@@ -2,16 +2,16 @@
 
 import { TaskExecutor } from "../task/manager.ts";
 import { GroupTaskCollector } from "../task/manager.ts";
-import { StorageManager } from "../storage.ts";
+import { Storage } from "../storage.ts";
 import { MinecraftExecutor } from "./mc.ts";
 import { ForgeExecutor } from "./forge.ts";
 import { parseJarName } from "../utils.ts";
 
 export class LibraryExecutor {
-  #storage: StorageManager;
+  #storage: Storage;
   #ignoreLock: boolean;
   constructor(config: {
-    storage: StorageManager;
+    storage: Storage;
     ignoreLock?: boolean;
   }) {
     this.#storage = config.storage;
