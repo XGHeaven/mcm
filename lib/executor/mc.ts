@@ -1,13 +1,19 @@
 import { fetchBinaryAndJson } from "../service.ts";
 import { StorageManager } from "../storage.ts";
-import { path, colors, hash } from "../deps.ts";
+import { colors, hash, path } from "../deps.ts";
 import {
-  TaskManager,
-  TaskExecutor,
   GroupTaskExecutor,
-  GroupTaskCollector,
+  TaskExecutor,
+  TaskManager,
 } from "../task/manager.ts";
-import { matchVersion, VersionSelector } from "../utils.ts";
+import {
+  byteToString,
+  formatJarUrlPath,
+  JarName,
+  matchVersion,
+  VersionSelector,
+} from "../utils.ts";
+import { LibraryFile, Library, LibraryExecutor } from "./_library.ts";
 
 const getAssetRemoteEndpoint = (hash: string) =>
   `http://resources.download.minecraft.net/${hash.substring(0, 2)}/${hash}`;
@@ -22,11 +28,6 @@ const getMetaStorageEndpoint = (metaUrl: string) => {
 const getMinecraftMetaRemoteEndpoint = () =>
   "http://launchermeta.mojang.com/mc/game/version_manifest.json";
 const minecraftMetaTarget = "/minecraft/mc/game/version_manifest.json";
-
-const getLibraryStorageEndpoint = (libraryUrl: string) => {
-  const parsedUrl = new URL(libraryUrl);
-  return path.join(`/minecraft/libraries`, parsedUrl.pathname);
-};
 
 const getLauncherEndpoint = (jarUrl: string) => {
   return path.join(`/minecraft/launcher`, new URL(jarUrl).pathname);
@@ -94,24 +95,7 @@ interface MinecraftPackage {
     server: MinecraftPackageDownload;
     server_mappings: MinecraftPackageDownload;
   };
-  libraries: MinecraftPackageLibrary[];
-}
-
-interface MinecraftPackageLibrary {
-  name: string;
-  downloads: {
-    artifact?: MinecraftLibraryResource;
-    classifiers?: Record<string, MinecraftLibraryResource>;
-  };
-  rules?: any[];
-  natives: any;
-}
-
-interface MinecraftLibraryResource {
-  path: string;
-  sha1: string;
-  size: number;
-  url: string;
+  libraries: Library[];
 }
 
 interface MinecraftPackageDownload {
@@ -145,14 +129,36 @@ async function fetchMinecraftPackage(
 }
 
 export class MinecraftExecutor {
+  static Prefix = "/minecraft";
+  static LibraryPrefix = `${MinecraftExecutor.Prefix}/libraries`;
+  static LibraryHost = "libraries.minecraft.net";
+  static LibraryOrigin = `https://${MinecraftExecutor.LibraryHost}`;
+
+  static getSourceLibrary(jarName: string | JarName) {
+    return formatJarUrlPath(MinecraftExecutor.LibraryOrigin, jarName);
+  }
+  static getTargetLibrary(jarName: string | JarName) {
+    return formatJarUrlPath(this.LibraryPrefix, jarName);
+  }
+  static getTargetLibraryFromUrl(url: string) {
+    const parsedUrl = new URL(url);
+    return path.join(this.LibraryPrefix, parsedUrl.pathname);
+  }
+
+  #library: LibraryExecutor;
+
   private assetIndexCache = new Map<string, Promise<void>>();
 
   constructor(
     private storage: StorageManager,
     private tasks: TaskManager,
     private versionSelector: VersionSelector,
-    private options: {verify?: boolean, ignoreLock?:boolean} = {}
-  ) {}
+    private options: { verify?: boolean; ignoreLock?: boolean } = {},
+  ) {
+    this.#library = new LibraryExecutor(
+      { storage, ignoreLock: !!options.ignoreLock },
+    );
+  }
 
   private createCacheResource(source: string, target: string): TaskExecutor {
     return async () => this.storage.cacheRemoteFile(source, target);
@@ -173,7 +179,7 @@ export class MinecraftExecutor {
     const libraryLock = getLibraryLockEndpoint(version, versionHash);
 
     return async (
-      { queue, queueGroup, waitTask },
+      { queue, queueGroup, waitTask, runTask },
     ) => {
       if (!this.options.ignoreLock && await this.storage.exist(target)) {
         console.log(`Version ${version} has been cached, skip...`);
@@ -212,28 +218,11 @@ export class MinecraftExecutor {
         libraryPromise = Promise.resolve();
         console.log(`Library of ${version} has been locked`);
       } else {
-        const col = new GroupTaskCollector()
-
-        for (
-          const { downloads: libInfo, name: libName } of mcPackage.libraries
-        ) {
-          if (libInfo.artifact) {
-            col.collect(
-              `${libName}`
-            ,this.library(libInfo.artifact))
-          }
-          if (libInfo.classifiers) {
-            for (const [type, lib] of Object.entries(libInfo.classifiers)) {
-              col.collect(
-                `${libName}:classifiers:${type}`
-              , this.library(lib));
-            }
-          }
-        }
-
-        libraryPromise = queueGroup(`library`, col.group).then(() =>
-          this.storage.lock(libraryLock)
-        );
+        libraryPromise = runTask(
+          this.#library.createLibraries(mcPackage.libraries),
+        ).then(() => {
+          this.storage.lock(libraryLock);
+        });
       }
 
       await waitTask(Promise.all(
@@ -261,7 +250,7 @@ export class MinecraftExecutor {
         );
         const successSyncSet = new Set<string>();
         const errorSyncSet = new Set<string>();
-        const errorMap = new Map<string, any>()
+        const errorMap = new Map<string, any>();
 
         const pros: any[] = [];
         for (const ver of selectedVersionMetas) {
@@ -272,7 +261,7 @@ export class MinecraftExecutor {
               },
               (e) => {
                 errorSyncSet.add(ver.id);
-                errorMap.set(ver.id, e)
+                errorMap.set(ver.id, e);
               },
             ),
           );
@@ -332,11 +321,13 @@ export class MinecraftExecutor {
         );
         if (errorSyncSet.size) {
           console.log(
-            `${colors.red('sync error')}:`,
+            `${colors.red("sync error")}:`,
           );
           for (const id of errorSyncSet) {
-            const error = errorMap.get(id)
-            console.log(`${colors.red('-')} ${colors.cyan(id)} ${error && error.message}`)
+            const error = errorMap.get(id);
+            console.log(
+              `${colors.red("-")} ${colors.cyan(id)} ${error && error.message}`,
+            );
           }
         } else {
           console.log(
@@ -357,7 +348,13 @@ export class MinecraftExecutor {
 
     for (const verMeta of selectedVersionMetas) {
       console.log(
-        `${colors.green("list")} minecraft ${verMeta.id} \t${colors.bold(targetManifest.versions.find(ver => ver.id === verMeta.id) ? 'synced' : 'no-sync')}\t ${
+        `${colors.green("list")} minecraft ${verMeta.id} \t${
+          colors.bold(
+            targetManifest.versions.find((ver) => ver.id === verMeta.id)
+              ? "synced"
+              : "no-sync",
+          )
+        }\t ${
           verMeta.type !== MinecraftVersionType.RELEASE
             ? colors.gray(verMeta.type)
             : ""
@@ -431,16 +428,18 @@ export class MinecraftExecutor {
   }
 
   // 运行的依赖库
-  private library(lib: MinecraftLibraryResource) {
+  private library(lib: LibraryFile) {
     return async () => {
-      const target = getLibraryStorageEndpoint(lib.url);
+      const target = MinecraftExecutor.getTargetLibraryFromUrl(lib.url);
       await this.storage.cacheRemoteFile(lib.url, target);
     };
   }
 
   private async readTargetMinecraftMeta(): Promise<MinecraftVersionManifest> {
     if (await this.storage.exist(minecraftMetaTarget)) {
-      return JSON.parse(await this.storage.layer.read(minecraftMetaTarget));
+      return JSON.parse(
+        byteToString(await this.storage.layer.read(minecraftMetaTarget)),
+      );
     }
 
     return {
@@ -473,7 +472,7 @@ export class MinecraftExecutor {
 
         const [data, json] = await fetchBinaryAndJson(source);
 
-        const actualHash = hash.createHash('sha1').update(data).toString('hex');
+        const actualHash = hash.createHash("sha1").update(data).toString("hex");
         if (expectHash !== actualHash) {
           console.error(
             `(${id}) Fetch asset index maybe not correct, hash is not matched.`,

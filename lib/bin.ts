@@ -7,29 +7,31 @@ import { TaskManager } from "./task/manager.ts";
 import { StorageLayer } from "./storage/layer.ts";
 import { FsLayer } from "./storage/fs-layer.ts";
 import { AliOSSLayer } from "./storage/alioss-layer.ts";
+import { ForgeExecutor } from "./executor/forge.ts";
 
 const args = flags.parse(Deno.args, {
-  string: ['storage-type', 'storage-options'],
-  boolean: ['help', 'list-only', 'verify', 'ignore-lock'],
+  string: ["storage-type", "storage-options"],
+  boolean: ["help", "list-only", "verify", "ignore-lock"],
   alias: {
-    help: ['h']
+    help: ["h"],
   },
   default: {
-    parallel: 8
-  }
-})
+    parallel: 8,
+  },
+});
 
-const listOnly = args['list-only'] || false;
-const parallel = parseInt(args['parallel'], 10) || 8;
+const listOnly = args["list-only"] || false;
+const parallel = parseInt(args["parallel"], 10) || 8;
 
-if (args['help'] || args['_'].length === 0) {
+if (args["help"] || args["_"].length === 0) {
   const version = colors.yellow("<version>");
   console.log([
     `mcm [options] <...commands>`,
     ,
     "Available Command:",
-    `  mc:${version}\t\tsync minecraft of ${version}`,
-    `  fabric:${version}\tsync fabric of ${version}`,
+    `  mc:${version}\t\t sync minecraft of ${version}`,
+    `  fabric:${version}\t sync fabric of ${version}`,
+    `  forge:${version}\t sync forge of ${version}`,
     ,
     `  ${version} is one of`,
     `    ${colors.cyan("1.14.4")} \t\t exact version`,
@@ -48,8 +50,7 @@ if (args['help'] || args['_'].length === 0) {
     `Options`,
     `  --verify \t Verify version sync is correct`,
     `  --list-only \t only list version needed to sync`,
-    `  --ignore-lock \t Ignore lock file`
-    ,
+    `  --ignore-lock \t Ignore lock file`,
     `Task Options`,
     `  --parallel <number> \t task parallel count, default 8`,
     ,
@@ -64,9 +65,10 @@ if (args['help'] || args['_'].length === 0) {
   Deno.exit(0);
 }
 
-const commands: string[] = args['_'] as string[];
-const storageType = Deno.env.get("STORAGE_TYPE") || args['storage-type'] || '';
-const storageOptions = Deno.env.get("STORAGE_OPTIONS") || args['storage-options'] || "";
+const commands: string[] = args["_"] as string[];
+const storageType = Deno.env.get("STORAGE_TYPE") || args["storage-type"] || "";
+const storageOptions = Deno.env.get("STORAGE_OPTIONS") ||
+  args["storage-options"] || "";
 
 let layer: StorageLayer;
 
@@ -103,6 +105,7 @@ const storage = new StorageManager(layer);
 
 const mcCommands = new Set<string>();
 const fabricCommands = new Set<string>();
+const forgeCommands = new Set<string>();
 
 for (const command of commands) {
   const [type, versionString] = command.split(":");
@@ -117,6 +120,9 @@ for (const command of commands) {
     case "fabric":
       fabricCommands.add(versionString);
       break;
+    case "forge":
+      forgeCommands.add(versionString);
+      break;
   }
 }
 
@@ -127,8 +133,8 @@ if (mcCommands.size) {
     parseVersionSelector(Array.from(mcCommands.values())),
     {
       verify: !!args.verify,
-      ignoreLock: !!args['ignore-lock']
-    }
+      ignoreLock: !!args["ignore-lock"],
+    },
   );
 
   if (listOnly) {
@@ -147,5 +153,21 @@ if (fabricCommands.size) {
 
   if (!listOnly) {
     fabric.execute().catch(console.error);
+  }
+}
+
+if (forgeCommands.size) {
+  const forge = new ForgeExecutor(
+    {
+      storage,
+      tasks,
+      versionSelector: parseVersionSelector(Array.from(forgeCommands.values())),
+      ignoreLock: !!args["ignore-lock"],
+      verify: !!args.verify,
+    },
+  );
+
+  if (!listOnly) {
+    forge.execute().catch(console.error);
   }
 }

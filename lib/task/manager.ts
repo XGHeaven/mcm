@@ -9,9 +9,10 @@ interface TaskContext {
     exeMap: GroupTaskExecutor,
     bailout?: boolean,
   ) => Promise<void>;
-  waitTask: (taskPromise: Promise<any>) => Promise<void>,
+  waitTask: (taskPromise: Promise<any>) => Promise<void>;
+  runTask: (exe: TaskExecutor) => Promise<void>;
   task: TaskNode;
-  tasks: TaskManager
+  tasks: TaskManager;
 }
 
 export type TaskExecutor = (context: TaskContext) => Promise<void> | void;
@@ -23,6 +24,10 @@ enum TaskStatus {
   RUNNING,
   ERROR,
   DONE,
+}
+
+function readableDisplayNames(names: string[]): string {
+  return names.map((name) => colors.blue(name)).join(colors.gray("->"));
 }
 
 export class GroupTaskCollector {
@@ -42,117 +47,129 @@ export class GroupTaskCollector {
 }
 
 abstract class TreeNode {
-  status: TaskStatus = TaskStatus.WAITING
-  child: TreeNode | null = null
-  sibling: TreeNode | null = null
-  defer = async.deferred<void>()
-  displayNames: string[]
+  status: TaskStatus = TaskStatus.WAITING;
+  child: TreeNode | null = null;
+  sibling: TreeNode | null = null;
+  defer = async.deferred<void>();
+  displayNames: string[];
 
-  totalChildren = 0
-  childFinished = 0
-  childError = 0
+  totalChildren = 0;
+  childFinished = 0;
+  childError = 0;
 
-  protected errors: any[] = []
+  protected errors: any[] = [];
 
   constructor(public name: string, public parent: TreeNode) {
     // 补充一个默认 catch handler，避免程序异常退出
-    this.defer.catch(() => {})
+    this.defer.catch(() => {});
 
-    const names: string[] = []
-    let node: TreeNode = this
+    const names: string[] = [];
+    let node: TreeNode = this;
     // 因为针对 RootNode，这里传的是 null，所以要单独判断下
     while (node && node.parent !== node) {
-      names.push(node.name)
-      node = node.parent
+      names.push(node.name);
+      node = node.parent;
     }
 
-    this.displayNames = names.reverse()
+    this.displayNames = names.reverse();
   }
 
   onChildFinished(err?: any) {
-    this.childFinished += 1
+    this.childFinished += 1;
     if (err) {
-      this.childError += 1
-      this.errors.push(err)
+      this.childError += 1;
+      this.errors.push(err);
     }
   }
 
   addChild(child: TreeNode) {
     if (!this.child) {
-      this.child = child
+      this.child = child;
     } else {
-      let last = this.child
+      let last = this.child;
       while (last.sibling) {
-        last = last.sibling
+        last = last.sibling;
       }
-      last.sibling = child
+      last.sibling = child;
     }
 
-    this.totalChildren += 1
+    this.totalChildren += 1;
   }
 
   removeTask(child: TreeNode) {
-      let pre: TreeNode | null = null
-      let node = this.child
+    let pre: TreeNode | null = null;
+    let node = this.child;
 
-      while (node && node !== child) {
-        pre = node
-        if (node.sibling) {
-          node = node.sibling
-        }
+    while (node && node !== child) {
+      pre = node;
+      if (node.sibling) {
+        node = node.sibling;
       }
+    }
 
-      if (node) {
-        if (pre) {
-          pre.sibling = node.sibling
-        } else {
-          this.child = node.sibling
-        }
+    if (node) {
+      if (pre) {
+        pre.sibling = node.sibling;
       } else {
-        console.log('cannot found')
+        this.child = node.sibling;
       }
+    } else {
+      console.log("cannot found");
+    }
   }
 }
 
 class TaskNode extends TreeNode {
-  startTime = 0
-  longTaskTimer = 0
-  inLongPhase = false
-  longTaskCount = 0
+  startTime = 0;
+  longTaskTimer = 0;
+  inLongPhase = false;
+  longTaskCount = 0;
 
-  #timeoutTimer = 0
-  #timeoutCount = 0
-  #timeout = 0
+  #timeoutTimer = 0;
+  #timeoutCount = 0;
+  #timeout = 0;
 
-  constructor(name: string, public executor: TaskExecutor, public parent: TreeNode) {
-    super(name, parent)
+  constructor(
+    name: string,
+    public executor: TaskExecutor,
+    public parent: TreeNode,
+  ) {
+    super(name, parent);
   }
 
   enableTimeoutReport(timeout: number) {
-    this.#timeout = timeout
-    this.#timeoutCount = 0
+    this.#timeout = timeout;
+    this.#timeoutCount = 0;
     if (!this.#timeoutTimer) {
-      this.#timeoutTimer = setTimeout(() => this.reportTimeout(), timeout)
+      this.#timeoutTimer = setTimeout(() => this.reportTimeout(), timeout);
     }
   }
 
   disableTimeoutReport() {
-    clearTimeout(this.#timeoutTimer)
-    this.#timeoutTimer = 0
+    clearTimeout(this.#timeoutTimer);
+    this.#timeoutTimer = 0;
   }
 
   private reportTimeout() {
-    this.#timeoutCount+= 1
-    console.warn(`${colors.yellow("timeout")} ${this.name} running over ${Math.floor(this.#timeout * this.#timeoutCount / 1000)}s`);
-    this.#timeoutTimer = setTimeout(() => this.reportTimeout(), this.#timeout)
+    this.#timeoutCount += 1;
+    console.warn(
+      `${colors.yellow("timeout")} ${
+        readableDisplayNames(this.displayNames)
+      } running over ${Math.floor(this.#timeout * this.#timeoutCount / 1000)}s`,
+    );
+    this.#timeoutTimer = setTimeout(() => this.reportTimeout(), this.#timeout);
   }
 }
 
 class GroupNode extends TreeNode {
-  #bailouted = false
+  #bailouted = false;
 
-  constructor(name: string, public parent: TreeNode, public bailout: boolean = false) {
-    super(name, parent)
+  constructor(
+    name: string,
+    public parent: TreeNode,
+    public bailout: boolean = false,
+  ) {
+    super(name, parent);
   }
 
   onChildFinished(err?: any) {
@@ -161,48 +178,48 @@ class GroupNode extends TreeNode {
       if (!this.child) {
         // 所有任务都结束了
         if (this.childError) {
-          this.defer.reject(this.errors[0])
+          this.defer.reject(this.errors[0]);
         } else {
-          this.defer.resolve()
+          this.defer.resolve();
         }
       } else if (err && !this.#bailouted) {
         this.#bailouted = true;
-        this._cleanWaitingChild()
+        this._cleanWaitingChild();
         if (!this.child) {
-          this.defer.reject(err)
+          this.defer.reject(err);
         }
       }
     } else {
       if (this.childFinished === this.totalChildren) {
         if (this.childError) {
-          this.defer.reject(new Error(this.errors[0]))
+          this.defer.reject(new Error(this.errors[0]));
         } else {
-          this.defer.resolve()
+          this.defer.resolve();
         }
       }
     }
   }
 
   private _cleanWaitingChild() {
-    let node = this.child
+    let node = this.child;
     while (node) {
       if (node.status === TaskStatus.WAITING) {
-        node = node.sibling
+        node = node.sibling;
       } else {
-        break
+        break;
       }
     }
 
-    this.child = node
+    this.child = node;
     while (node) {
       if (node.sibling) {
         if (node.sibling.status === TaskStatus.WAITING) {
-          node.sibling = node.sibling.sibling
+          node.sibling = node.sibling.sibling;
         } else {
-          node = node.sibling
+          node = node.sibling;
         }
       } else {
-        break
+        break;
       }
     }
   }
@@ -210,8 +227,8 @@ class GroupNode extends TreeNode {
 
 class RootNode extends TreeNode {
   constructor() {
-    super('root', null as any)
-    this.parent = this
+    super("root", null as any);
+    this.parent = this;
   }
 }
 
@@ -232,42 +249,42 @@ export class TaskManager {
     this.#longTaskTimeout = options.longTaskTimeout ?? 30 * 1000;
   }
 
-  queue = this._queue.bind(this, null)
+  queue = this._queue.bind(this, null);
 
-  queueGroup = this._queueGroup.bind(this, null)
+  queueGroup = this._queueGroup.bind(this, null);
 
   waitAllFinished(): Promise<void> {
     return this.#root.defer;
   }
 
   run() {
-    let node = this.#root.child
-    let nextNode: TreeNode | null = node
+    let node = this.#root.child;
+    let nextNode: TreeNode | null = node;
     if (!node) {
       if (this.#root.childError) {
-        this.#root.defer.reject(new Error('root error'))
+        this.#root.defer.reject(new Error("root error"));
       } else {
-        this.#root.defer.resolve()
+        this.#root.defer.resolve();
       }
       return;
     }
     while (nextNode && this.#running < this.#parallel) {
-      node = nextNode
+      node = nextNode;
 
       if (node instanceof TaskNode && node.status === TaskStatus.WAITING) {
-        this._runTask(node)
+        this._runTask(node);
       }
 
       if (node.child) {
-        nextNode = node.child
+        nextNode = node.child;
       } else if (node.sibling) {
-        nextNode = node.sibling
+        nextNode = node.sibling;
       } else {
         do {
-          nextNode = nextNode.parent
-        } while (nextNode && !nextNode.sibling && nextNode !== this.#root)
+          nextNode = nextNode.parent;
+        } while (nextNode && !nextNode.sibling && nextNode !== this.#root);
         if (nextNode) {
-          nextNode = nextNode.sibling
+          nextNode = nextNode.sibling;
         }
       }
     }
@@ -281,21 +298,37 @@ export class TaskManager {
 
     task.inLongPhase = true;
     this.changeParallel(1);
-    task.disableTimeoutReport()
+    task.disableTimeoutReport();
   }
 
   private _stopLongPhase(task: TaskNode) {
     if (task.inLongPhase) {
       task.inLongPhase = false;
       this.changeParallel(-1);
-      task.enableTimeoutReport(this.#longTaskTimeout)
+      task.enableTimeoutReport(this.#longTaskTimeout);
     }
   }
 
-  private async _waitTask(task: TaskNode, promise: Promise<void>): Promise<void> {
-    this._startLongPhase(task)
-    await promise
-    this._stopLongPhase(task)
+  private async _waitTask(
+    task: TaskNode,
+    promise: Promise<void>,
+  ): Promise<void> {
+    this._startLongPhase(task);
+    await promise;
+    this._stopLongPhase(task);
+  }
+
+  private _generateTaskContext(task: TaskNode): TaskContext {
+    return {
+      startLongPhase: this._startLongPhase.bind(this, task),
+      stopLongPhase: this._stopLongPhase.bind(this, task),
+      queue: this._queue.bind(this, task),
+      queueGroup: this._queueGroup.bind(this, task),
+      waitTask: this._waitTask.bind(this, task),
+      task,
+      tasks: this,
+      runTask: (exe) => Promise.resolve(exe(this._generateTaskContext(task))),
+    };
   }
 
   private _runTask(task: TaskNode) {
@@ -305,33 +338,27 @@ export class TaskManager {
     const name = this.getDisplayName(task);
     console.log(`${colors.magenta("run")} ${name}`);
     const runner = Promise.resolve().then(() =>
-      task.executor({
-        startLongPhase: this._startLongPhase.bind(this, task),
-        stopLongPhase: this._stopLongPhase.bind(this, task),
-        queue: this._queue.bind(this, task),
-        queueGroup: this._queueGroup.bind(this, task),
-        waitTask: this._waitTask.bind(this, task),
-        task,
-        tasks: this
-      })
+      task.executor(this._generateTaskContext(task))
     );
-    task.enableTimeoutReport(this.#longTaskTimeout)
+    task.enableTimeoutReport(this.#longTaskTimeout);
 
     const finish = (e?: any) => {
-      const timeCost = colors.gray(`${(performance.now() - task.startTime).toFixed(2)}ms`);
+      const timeCost = colors.gray(
+        `${(performance.now() - task.startTime).toFixed(2)}ms`,
+      );
       this._stopLongPhase(task);
-      task.disableTimeoutReport()
+      task.disableTimeoutReport();
       this.#running--;
-      task.status = e ? TaskStatus.ERROR : TaskStatus.DONE
+      task.status = e ? TaskStatus.ERROR : TaskStatus.DONE;
       this._removeTask(task);
 
       if (e) {
-        task.defer.reject(e)
+        task.defer.reject(e);
       } else {
-        task.defer.resolve()
+        task.defer.resolve();
       }
 
-      task.parent.onChildFinished(e)
+      task.parent.onChildFinished(e);
 
       if (e) {
         console.log(
@@ -364,66 +391,75 @@ export class TaskManager {
 
     return colors.gray(
       `(${task.childFinished}/${
-        task.childError ? colors.red(String(task.childError)) : task.childError
+        task.childError
+          ? colors.red(String(task.childError))
+          : task.childError
       }/${task.totalChildren})`,
     );
   }
 
   private changeParallel(delta: number) {
     // 扩张的话无需设置上限，因为扩张说明任务的所有权已经移交出去了
-    this.#parallel = Math.max(this.#parallel + delta, this.#minParallel)
+    this.#parallel = Math.max(this.#parallel + delta, this.#minParallel);
     Promise.resolve().then(() => this.run());
   }
 
-  private _queue(parent: TaskNode | null, name: string, exe: TaskExecutor): Promise<void> {
-    const task = new TaskNode(name, exe, parent || this.#root)
-    this._addTask(task)
-    this.run()
+  private _queue(
+    parent: TaskNode | null,
+    name: string,
+    exe: TaskExecutor,
+  ): Promise<void> {
+    const task = new TaskNode(name, exe, parent || this.#root);
+    this._addTask(task);
+    this.run();
 
-    return task.defer
+    return task.defer;
   }
 
-  private _queueGroup(parent: TreeNode | null, name: string,
-                      exeMap: GroupTaskExecutor,
-                      bailout = false): Promise<void> {
-    const group = new GroupNode(name, parent || this.#root, bailout)
+  private _queueGroup(
+    parent: TreeNode | null,
+    name: string,
+    exeMap: GroupTaskExecutor,
+    bailout = false,
+  ): Promise<void> {
+    const group = new GroupNode(name, parent || this.#root, bailout);
 
     for (const [key, exe] of Object.entries(exeMap)) {
-      group.addChild(new TaskNode(key, exe, group))
+      group.addChild(new TaskNode(key, exe, group));
     }
 
-    this._addTask(group)
-    this.run()
+    this._addTask(group);
+    this.run();
 
-    return group.defer
+    return group.defer;
   }
 
   private _addTask(task: TreeNode) {
-    const parent = task.parent
+    const parent = task.parent;
 
-    parent.addChild(task)
+    parent.addChild(task);
   }
 
   private _removeTask(task: TaskNode) {
-    const parent = task.parent
-    parent.removeTask(task)
+    const parent = task.parent;
+    parent.removeTask(task);
 
     if (task.child) {
-      const root = this.#root
-      let last = task.child
+      const root = this.#root;
+      let last = task.child;
       while (last.sibling) {
-        last.parent = root
-        root.totalChildren += 1
-        last = last.sibling
+        last.parent = root;
+        root.totalChildren += 1;
+        last = last.sibling;
       }
-      last.parent = root
-      root.totalChildren += 1
-      last.sibling = root.child
-      root.child = task.child
+      last.parent = root;
+      root.totalChildren += 1;
+      last.sibling = root.child;
+      root.child = task.child;
     }
   }
 
   private getDisplayName(node: TreeNode) {
-    return node.displayNames.map(name => colors.blue(name)).join(colors.gray('->'))
+    return readableDisplayNames(node.displayNames);
   }
 }

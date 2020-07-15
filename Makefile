@@ -12,7 +12,7 @@ update:
 	DENO_DIR=$(CACHE_DIR) deno cache --lock lock.json --lock-write --unstable ./lib/deps.ts ./lib/prepare.ts
 
 play:
-	DENO_DIR=$(CACHE_DIR) deno run -A --unstable ./lib/playground.ts
+	DENO_DIR=$(CACHE_DIR) deno run --lock lock.json -A --unstable ./lib/playground.ts
 
 format:
 	deno fmt lib/

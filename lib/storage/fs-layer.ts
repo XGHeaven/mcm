@@ -10,11 +10,9 @@ export class FsLayer extends StorageLayer {
     return path.join(this.root, filepath);
   }
 
-  async read(filepath: string): Promise<string> {
+  async read(filepath: string): Promise<Uint8Array> {
     filepath = this.prefix(filepath);
-    const textDecoder = new TextDecoder("utf-8");
-    const data = await Deno.readFile(filepath);
-    return textDecoder.decode(data);
+    return await Deno.readFile(filepath);
   }
 
   async write(filepath: string, data: string | Uint8Array): Promise<void> {

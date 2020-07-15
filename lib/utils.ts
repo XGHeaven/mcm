@@ -1,3 +1,5 @@
+import { path } from "./deps.ts";
+
 export function byteToString(data: ArrayBuffer) {
   const decoder = new TextDecoder("utf-8");
   return decoder.decode(data);
@@ -135,4 +137,57 @@ export function parseVersionMatcher(version: string): VersionMatcher {
   }
 
   return version;
+}
+
+export interface JarName {
+  group: string;
+  name: string;
+  version: string;
+  classifier?: string;
+}
+
+export function parseJarName(jarName: string) {
+  const [group, name, version] = jarName.split(":");
+  return {
+    group,
+    name,
+    version,
+    classifier: "",
+  };
+}
+
+export function formatJarUrlPath(
+  prefix: string,
+  jarName: JarName | string,
+  ext: string = "jar",
+): string {
+  const { group, name, version, classifier } = typeof jarName === "string"
+    ? parseJarName(jarName)
+    : jarName;
+
+  if (!prefix.endsWith("/")) {
+    prefix += "/";
+  }
+
+  prefix += [
+    group.replace(/\./g, "/"),
+    name,
+    version,
+    `${name}-${version}${classifier ? "-" + classifier : ""}.${ext}`,
+  ].join("/");
+
+  return prefix;
+}
+
+export function resolveUrl(from: string, to: string) {
+  const fromUrl = new URL(from);
+  const toUrl = new URL(to);
+
+  if (!toUrl.origin) {
+    fromUrl.pathname = path.resolve(fromUrl.pathname, toUrl.pathname);
+  } else {
+    return to;
+  }
+
+  return fromUrl.toString();
 }

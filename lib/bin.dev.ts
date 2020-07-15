@@ -1,2 +1,2 @@
 import "./prepare.ts";
-import "./bin.ts"
+import "./bin.ts";

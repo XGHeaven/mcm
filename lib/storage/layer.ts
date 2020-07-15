@@ -3,7 +3,7 @@ export interface LayerWriteOptions {
 }
 
 export abstract class StorageLayer {
-  abstract read(filepath: string): Promise<string>;
+  abstract read(filepath: string): Promise<Uint8Array>;
   abstract write(
     filepath: string,
     data: string | ArrayBuffer,

@@ -43,3 +43,9 @@ Deno.test("parseVersionMatcher", () => {
     }
   }
 });
+
+Deno.test({
+  name: "parseJarName",
+  fn() {
+  },
+});

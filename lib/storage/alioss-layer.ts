@@ -152,10 +152,9 @@ export class AliOSSLayer extends StorageLayer {
     throw error;
   }
 
-  async read(filepath: string): Promise<string> {
+  async read(filepath: string): Promise<Uint8Array> {
     const resp = await this.request("GET", filepath);
-    const text = await resp.text();
-    return text;
+    return new Uint8Array(await resp.arrayBuffer());
   }
 
   async write(
