@@ -232,6 +232,7 @@ export class ForgeExecutor {
           await this.#storage.read(
             ForgeExecutor.targetForgeFile(version, "installer", "jar"),
           );
+        this.#installerJarCache.delete(version)
         const profile = await getInstallProfileJSON(jarData);
 
         if ("install" in profile && "versionInfo" in profile) {
