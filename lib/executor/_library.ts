@@ -19,6 +19,15 @@ export class LibraryExecutor {
   }
 
   createLibraries(libraries: Libraries, lock?: string): TaskExecutor {
+    const libMap = new Map<string, Library>();
+
+    // 有可能会出现重复，先做一次去重
+    for (const library of libraries) {
+      if (!libMap.has(library.name)) {
+        libMap.set(library.name, library);
+      }
+    }
+
     return async ({ task, waitTask, queueGroup }) => {
       if (!this.#ignoreLock && lock && await this.#storage.isLock(lock)) {
         console.log(`Library of ${task.name} has been locked`);
@@ -27,7 +36,7 @@ export class LibraryExecutor {
       const col = new GroupTaskCollector();
 
       for (
-        const { downloads, name, url } of libraries
+        const { downloads, name, url } of libMap.values()
       ) {
         if (downloads) {
           // minecraft 兼容的格式

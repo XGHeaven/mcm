@@ -16,7 +16,7 @@ import { ForgeExecutor } from "./executor/forge.ts";
 
 const args = flags.parse(Deno.args, {
   string: ["storage-type", "storage-options"],
-  boolean: ["help", "list-only", "verify", "ignore-lock"],
+  boolean: ["help", "list-only", "verify", "ignore-lock", "prefer-use-source"],
   alias: {
     help: ["h"],
   },
@@ -27,14 +27,15 @@ const args = flags.parse(Deno.args, {
 
 const listOnly = args["list-only"] || false;
 const parallel = parseInt(args["parallel"], 10) || 8;
+const preferUseSource = !!args["prefer-use-source"];
 
 if (args["help"] || args["_"].length === 0) {
   const version = colors.yellow("<version>");
   console.log([
     `mcm [options] <...commands>`,
     ,
-    "Available Command:",
-    `  mc:${version}\t\t sync minecraft of ${version}`,
+    "Available Command",
+    `  minecraft:${version}\t sync minecraft of ${version}, alias: mc`,
     `  fabric:${version}\t sync fabric of ${version}`,
     `  forge:${version}\t sync forge of ${version}`,
     ,
@@ -46,27 +47,28 @@ if (args["help"] || args["_"].length === 0) {
     `    ${colors.cyan("/^1\\.16.*$/")} \t regexp version`,
     `    ${colors.cyan("release")} \t\t all release version`,
     `    ${colors.cyan("snapshot")} \t\t only snapshot version`,
-    `    ${
-      colors.cyan("old")
-    } \t\t very very old version before 1.0.0, default false`,
+    `    ${colors.cyan("old")} \t\t old version before 1.0.0, default false`,
     `    ${colors.cyan("diff")} \t\t version changed`,
     `    ${colors.cyan("all")} \t\t all version`,
     ,
     `Options`,
-    `  --verify \t Verify version sync is correct`,
-    `  --list-only \t only list version needed to sync`,
+    `  --verify \t\t Verify version sync is correct`,
+    `  --list-only \t\t only list version needed to sync`,
     `  --ignore-lock \t Ignore lock file`,
-    ``,
+    ,
     `Task Options`,
     `  --parallel <number> \t task parallel count, default 8`,
     ,
-    `Storage Options:`,
+    `Storage Options`,
     `  --storage-type \t Layer type of storage or use STORAGE_TYPE env (choice: fs alioss) [default: fs]`,
     `  --storage-options \t Storage layer options or use STORAGE_OPTIONS env`,
-    `      ${colors.cyan("fs")} with ${colors.yellow("storage_path")} options`,
-    `      ${colors.cyan("alioss")} with ${
+    `      ${colors.cyan("fs")} \t with ${
+      colors.yellow("storage_path")
+    } options`,
+    `      ${colors.cyan("alioss")} \t with ${
       colors.yellow("access_key:access_secret:bucket:endpoint")
     } options`,
+    `  --prefer-use-source \t Prefer use source file instead of cache when need to refetch data do something`,
   ].join("\n"));
   Deno.exit(0);
 }
@@ -121,6 +123,7 @@ for (const command of commands) {
   }
   switch (type) {
     case "mc":
+    case "minecraft":
       mcCommands.add(versionString);
       break;
     case "fabric":
@@ -170,6 +173,7 @@ if (forgeCommands.size) {
       versionSelector: parseVersionSelector(Array.from(forgeCommands.values())),
       ignoreLock: !!args["ignore-lock"],
       verify: !!args.verify,
+      preferUseSource,
     },
   );
 

@@ -25,7 +25,13 @@ type ForgeVersionClassifier = Record<string, string>;
 interface ForgeNewInstallProfile {
   spec: string;
   libraries: Libraries;
+  json: string;
   // 其他的暂时不重要
+}
+
+interface ForgeNewVersion {
+  libraries: Libraries;
+  // others
 }
 
 interface ForgeOldInstallProfile {
@@ -65,6 +71,18 @@ async function getInstallProfileJSON(
     "string",
   );
   return JSON.parse(jsonString);
+}
+
+async function createJarZip(jarData: Uint8Array): Promise<any> {
+  return await JSZip.loadAsync(jarData);
+}
+
+async function readZipJSON<T = any>(zip: any, filename: string): Promise<T> {
+  if (filename.startsWith("/")) {
+    filename = filename.slice(1);
+  }
+  const string = await zip.file(filename).async("string");
+  return JSON.parse(string);
 }
 
 export class ForgeExecutor {
@@ -111,6 +129,7 @@ export class ForgeExecutor {
   #versionSelector: VersionSelector;
   #verify: boolean = false;
   #ignoreLock: boolean = false;
+  #preferUseSource = false;
   #library: LibraryExecutor;
   #installerJarCache = new Map<string, Uint8Array>();
 
@@ -121,6 +140,7 @@ export class ForgeExecutor {
       versionSelector: VersionSelector;
       verify?: boolean;
       ignoreLock?: boolean;
+      preferUseSource?: boolean;
     },
   ) {
     this.#storage = config.storage;
@@ -131,6 +151,7 @@ export class ForgeExecutor {
     this.#library = new LibraryExecutor(
       { storage: this.#storage, ignoreLock: this.#ignoreLock },
     );
+    this.#preferUseSource = !!config.preferUseSource;
   }
 
   execute() {
@@ -228,21 +249,29 @@ export class ForgeExecutor {
         !this.#ignoreLock && json.classifiers["installer"] &&
         !await this.#storage.isLock(installerLock)
       ) {
-        const jarData = this.#installerJarCache.get(version) ??
-          await this.#storage.read(
-            ForgeExecutor.targetForgeFile(version, "installer", "jar"),
-          );
-        this.#installerJarCache.delete(version)
-        const profile = await getInstallProfileJSON(jarData);
+        const jarData = await this.readJarData(version);
+        const zip = await createJarZip(jarData);
+        const profile = await readZipJSON<ForgeInstallProfile>(
+          zip,
+          "install_profile.json",
+        );
 
         if ("install" in profile && "versionInfo" in profile) {
           // 旧版本 forge installer
           await runTask(
             this.#library.createLibraries(profile.versionInfo.libraries),
           );
-        } else if ("spec" in profile && "libraries" in profile) {
+        } else if ("json" in profile && "libraries" in profile) {
           // 新版本 forge installer
-          await runTask(this.#library.createLibraries(profile.libraries));
+          const versions = await readZipJSON<ForgeNewVersion>(
+            zip,
+            profile.json,
+          );
+          await runTask(
+            this.#library.createLibraries(
+              [...profile.libraries, ...versions.libraries],
+            ),
+          );
         } else {
           return Promise.reject(
             new Error(`Unknown install profile of ${version}`),
@@ -273,7 +302,7 @@ export class ForgeExecutor {
             jarData,
             { type: resp.headers.get("content.type") || "" },
           );
-          this.#installerJarCache.set(fullVersion, jarData);
+          this.cacheJarData(fullVersion, jarData);
         }
         return;
       }
@@ -335,5 +364,28 @@ export class ForgeExecutor {
 
       return acc;
     }, {} as ForgeVersions);
+  }
+
+  private cacheJarData(name: string, jarData: Uint8Array) {
+    this.#installerJarCache.set(name, jarData);
+  }
+
+  private async readJarData(version: string): Promise<Uint8Array> {
+    if (this.#installerJarCache.has(version)) {
+      const data = this.#installerJarCache.get(version)!;
+      this.#installerJarCache.delete(version);
+      return data;
+    }
+
+    if (this.#preferUseSource) {
+      const resp = await fetchAndRetry(
+        ForgeExecutor.sourceForgeFile(version, "installer", "jar"),
+      );
+      return new Uint8Array(await resp.arrayBuffer());
+    } else {
+      return await this.#storage.read(
+        ForgeExecutor.targetForgeFile(version, "installer", "jar"),
+      );
+    }
   }
 }
