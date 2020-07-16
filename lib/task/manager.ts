@@ -122,7 +122,7 @@ abstract class TreeNode {
 class TaskNode extends TreeNode {
   startTime = 0;
   longTaskTimer = 0;
-  inLongPhase = false;
+  inLongPhase = 0;
   longTaskCount = 0;
 
   #timeoutTimer = 0;
@@ -291,21 +291,22 @@ export class TaskManager {
   }
 
   private _startLongPhase(task: TaskNode) {
-    if (task.inLongPhase) {
-      console.error(`Task ${task.name} always in long phase`);
-      return;
+    task.inLongPhase += 1;
+    if (task.inLongPhase === 1) {
+      // 只有第一次的时候才会增加
+      this.changeParallel(1);
+      task.disableTimeoutReport();
     }
-
-    task.inLongPhase = true;
-    this.changeParallel(1);
-    task.disableTimeoutReport();
   }
 
   private _stopLongPhase(task: TaskNode) {
     if (task.inLongPhase) {
-      task.inLongPhase = false;
-      this.changeParallel(-1);
-      task.enableTimeoutReport(this.#longTaskTimeout);
+      task.inLongPhase -= 1;
+      if (!task.inLongPhase) {
+        // 只有完全退出的时候才会减少
+        this.changeParallel(-1);
+        task.enableTimeoutReport(this.#longTaskTimeout);
+      }
     }
   }
 

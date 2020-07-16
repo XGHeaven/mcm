@@ -220,9 +220,7 @@ export class MinecraftExecutor {
       } else {
         libraryPromise = runTask(
           this.#library.createLibraries(mcPackage.libraries),
-        ).then(() => {
-          this.storage.lock(libraryLock);
-        });
+        ).then(() => this.storage.lock(libraryLock));
       }
 
       await waitTask(Promise.all(
