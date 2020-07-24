@@ -28,3 +28,8 @@ export async function fetchBinaryAndJson<T = any>(
   const data = new Uint8Array(await resp.arrayBuffer());
   return [data, JSON.parse(new TextDecoder("utf-8").decode(data))];
 }
+
+export async function fetchJSON<T = any>(url: string): Promise<T> {
+  const resp = await fetchAndRetry(url);
+  return resp.json();
+}

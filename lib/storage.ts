@@ -44,12 +44,15 @@ export class Storage implements StorageLayer {
     });
   }
 
-  async cacheJSON(target: string, data: Uint8Array, force = false) {
+  async cacheJSON(target: string, data: Uint8Array | string, force = false) {
     if (!force && await this.layer.exist(target)) {
       return;
     }
+    const value = data instanceof Uint8Array
+      ? data
+      : new TextEncoder().encode(data);
 
-    await this.layer.write(target, data, {
+    await this.layer.write(target, value, {
       type: "application/json",
     });
   }

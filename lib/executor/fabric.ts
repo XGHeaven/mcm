@@ -1,12 +1,12 @@
 import { Storage } from "../storage.ts";
-import { fetchBinaryAndJson } from "../service.ts";
+import { fetchBinaryAndJson, fetchJSON } from "../service.ts";
 import { path } from "../deps.ts";
 import {
   TaskManager,
   TaskExecutor,
   GroupTaskCollector,
 } from "../task/manager.ts";
-import { matchVersion, VersionSelector } from "../utils.ts";
+import { matchVersion, VersionSelector, byteToString } from "../utils.ts";
 
 export interface GameVersion {
   version: string;
@@ -36,19 +36,19 @@ export interface LoaderVersion {
   stable: boolean;
 }
 
-export interface InstallInfo {
+export interface InstallerMeta {
   url: string;
   maven: string;
   version: string;
   stable: boolean;
 }
 
-export interface AllVersions {
+export interface FabricMeta {
   game: GameVersion[];
   mappings: FabricMapping[];
   intermediary: IntermediaryVersion[];
   loader: LoaderVersion[];
-  installer: InstallInfo[];
+  installer: InstallerMeta[];
 }
 
 export interface LoaderLauncherMeta {
@@ -70,6 +70,18 @@ export interface LoaderLauncherMetaLibrary {
   url?: string;
 }
 
+export interface LoaderOfGameMeta {
+  loader: LoaderVersion;
+  intermediary: IntermediaryVersion;
+  launcherMeta: LoaderLauncherMeta;
+}
+
+/**
+ * Fabric 的整体架构分为三层
+ * - mapping 用于抹平不同版本之间的 api 差异。游戏版本相关并且是一对多的关系
+ * - intermediary 用于提供一致的 api 层。游戏版本相关但只是一对一关系
+ * - loader 用于加载模组。游戏版本无关
+ */
 export class FabricExecutor {
   static EndpointPrefix = "/fabric";
   static MavenEndpoint = `${FabricExecutor.EndpointPrefix}/maven`;
@@ -77,8 +89,6 @@ export class FabricExecutor {
   static FabricMetaHost = "https://meta.fabricmc.net";
   static FabricMavenHost = "https://maven.fabricmc.net";
   static UrlPrefix = `/v2/versions`;
-
-  private allVersions!: AllVersions;
 
   constructor(
     private storage: Storage,
@@ -102,23 +112,52 @@ export class FabricExecutor {
     ];
   }
 
-  // 对一些 endpoint 不变以及内容发生变化的 json 进行更新
-  updateJSON: TaskExecutor = async () => {
-    const resource = [
-      "/game",
-      "/game/yarn",
-      "/game/intermediary",
-      "/intermediary",
-      "/yarn",
-      "/loader",
-    ];
-    for (const res of resource) {
-      const [remote, target] = this.getMetaPairPath(res);
-      await this.storage.cacheRemoteFile(remote, target, true);
-    }
-  };
+  private getSourceMeta(uri: string = "") {
+    const url = new URL(FabricExecutor.FabricMetaHost);
+    url.pathname = path.join(FabricExecutor.UrlPrefix, uri);
+    return url.toString();
+  }
 
-  createMavenJar(maven: string) {
+  private getTargetMeta(uri: string = "") {
+    const ext = this.storage.isSupportSameFileFolder() ? "" : ".json";
+    return path.join(
+      FabricExecutor.MetaEndpoint,
+      FabricExecutor.UrlPrefix,
+      uri,
+    ) + ext;
+  }
+
+  // 对一些 endpoint 不变以及内容发生变化的 json 进行更新
+  async storeJSON(allVersions: FabricMeta) {
+    const gameVersions = new Set<string>(
+      allVersions.game.map((ver) => ver.version),
+    );
+
+    const cacheTo = async (uri: string, json: any) => {
+      const target = this.getTargetMeta(uri);
+      await this.storage.cacheJSON(target, JSON.stringify(json));
+    };
+
+    const selectGame = async (uri: string) => {
+      const [source, target] = this.getMetaPairPath(uri);
+      const games = await fetchJSON<GameVersion[]>(source);
+
+      await this.storage.cacheJSON(
+        target,
+        JSON.stringify(games.filter((ver) => gameVersions.has(ver.version))),
+      );
+    };
+
+    await Promise.all([
+      cacheTo("/game", allVersions.game),
+      selectGame("/game/yarn"),
+      selectGame("/game/intermediary"),
+      cacheTo("/yarn", allVersions.mappings),
+      cacheTo("/loader", allVersions.loader),
+    ]);
+  }
+
+  private createMavenJar(maven: string): TaskExecutor {
     const [group, name, version] = maven.split(":");
     const uri = path.join(
       "/",
@@ -135,51 +174,7 @@ export class FabricExecutor {
     };
   }
 
-  // 根据游戏版本获取对应的 Loader，并递归获取下面的 loader 的 meta
-  createLoaderOfGame(gameVersion: string): TaskExecutor {
-    return async ({ queue }) => {
-      const [source, target] = this.getMetaPairPath(`/loader/${gameVersion}`);
-      const [data, loaders] = await fetchBinaryAndJson<
-        Array<{
-          loader: LoaderVersion;
-          intermediary: IntermediaryVersion;
-          launcherMeta: LoaderLauncherMeta;
-        }>
-      >(source);
-
-      const mavenSet = new Set<string>();
-
-      const collectMaven = (lib: LoaderLauncherMetaLibrary) => {
-        if (lib.url && lib.url.startsWith(FabricExecutor.FabricMavenHost)) {
-          mavenSet.add(lib.name);
-        }
-      };
-
-      for (const { loader, intermediary, launcherMeta } of loaders) {
-        mavenSet.add(loader.maven);
-        mavenSet.add(intermediary.maven);
-
-        launcherMeta.libraries.common.forEach(collectMaven);
-        launcherMeta.libraries.client.forEach(collectMaven);
-        launcherMeta.libraries.server.forEach(collectMaven);
-
-        queue(`${loader.version}`, async () => {
-          const [source, target] = this.getMetaPairPath(
-            `/loader/${gameVersion}/${loader.version}`,
-          );
-          await this.storage.cacheRemoteFile(source, target);
-        });
-      }
-
-      for (const maven of mavenSet) {
-        queue(`maven:${maven}`, this.createMavenJar(maven));
-      }
-
-      await this.storage.cacheJSON(target, data, true);
-    };
-  }
-
-  createIntermediaryOfGame(gameVersion: string): TaskExecutor {
+  private createIntermediaryOfGame(gameVersion: string): TaskExecutor {
     return async () => {
       const [source, target] = this.getMetaPairPath(
         `/intermediary/${gameVersion}`,
@@ -189,64 +184,161 @@ export class FabricExecutor {
     };
   }
 
-  createVersion(version: string): TaskExecutor {
+  createVersion(gameVersion: string): TaskExecutor {
     return async (
-      { queue, queueGroup },
+      { queue, queueGroup, waitTask },
     ) => {
-      queue(
-        `loader:${version}`,
-        this.createLoaderOfGame(version),
+      const [metaSource, metaTarget] = this.getMetaPairPath(
+        `/loader/${gameVersion}`,
       );
-      queue(
-        `intermediary:${version}`,
-        this.createIntermediaryOfGame(version),
+      const sourceLoaderOfGame = await fetchJSON<LoaderOfGameMeta[]>(
+        metaSource,
+      );
+      const currentLoaderOfGame = await this.getTargetLoaderOfGame(gameVersion);
+
+      const syncedLoaderVersion = new Set<string>(
+        currentLoaderOfGame.map(({ loader }) => loader.version),
       );
 
-      const col = new GroupTaskCollector();
+      const interTask = queue(
+        `intermediary:${gameVersion}`,
+        this.createIntermediaryOfGame(gameVersion),
+      );
 
-      for (const mapping of this.allVersions.mappings) {
-        if (mapping.gameVersion === version) {
-          col.collect(
-            `${mapping.version}`,
-            this.createMavenJar(mapping.maven),
-          );
+      const loaderCollect = new GroupTaskCollector();
+
+      const mavenSet = new Set<string>();
+
+      const collectMaven = (lib: LoaderLauncherMetaLibrary) => {
+        if (lib.url && lib.url.startsWith(FabricExecutor.FabricMavenHost)) {
+          mavenSet.add(lib.name);
         }
+      };
+
+      const loaderOfGame = this.versionSelector.diff
+        ? sourceLoaderOfGame.filter((loader) =>
+          syncedLoaderVersion.has(loader.loader.version)
+        )
+        : sourceLoaderOfGame;
+
+      for (const loaderMeta of loaderOfGame) {
+        const { loader, intermediary, launcherMeta } = loaderMeta;
+        mavenSet.add(loader.maven);
+        mavenSet.add(intermediary.maven);
+
+        launcherMeta.libraries.common.forEach(collectMaven);
+        launcherMeta.libraries.client.forEach(collectMaven);
+        launcherMeta.libraries.server.forEach(collectMaven);
+
+        loaderCollect.collect(`${loader.version}`, async () => {
+          await this.storage.cacheJSON(
+            this.getTargetMeta(`/loader/${gameVersion}/${loader.version}`),
+            new TextEncoder().encode(JSON.stringify(loaderMeta)),
+          );
+        });
       }
 
-      queueGroup(`mappings`, col.group);
+      const mavenCollect = new GroupTaskCollector();
+      for (const maven of mavenSet) {
+        mavenCollect.collect(`${maven}`, this.createMavenJar(maven));
+      }
+
+      await waitTask(
+        Promise.all(
+          [
+            interTask,
+            queueGroup(`loader`, loaderCollect.group),
+            queueGroup("maven", mavenCollect.group),
+          ],
+        ),
+      );
+      await this.storage.cacheJSON(
+        metaTarget,
+        new TextEncoder().encode(JSON.stringify(sourceLoaderOfGame)),
+        true,
+      );
     };
   }
 
   execute() {
-    return this.tasks.queue("fabric", async ({ queue, queueGroup }) => {
-      if (!this.allVersions) {
-        const [source, target] = this.getMetaPairPath();
-        const [data, allVersions] = await fetchBinaryAndJson<AllVersions>(
-          source,
-        );
-        this.allVersions = allVersions;
-        await this.storage.cacheJSON(target, data, true);
-      }
+    return this.tasks.queue("fabric", async ({ queue, waitTask }) => {
+      const [source, target] = this.getMetaPairPath();
+      const [_, allVersions] = await fetchBinaryAndJson<FabricMeta>(
+        source,
+      );
 
-      const gvc = new GroupTaskCollector();
+      const selectedVersion = this.selectVersion(allVersions);
+      const successVersions = new Set<string>();
+      const syncedVersions = new Set<string>();
 
-      const selectedVersion = this.selectVersion(this.allVersions);
-
-      for (const gameVersion of selectedVersion) {
-        gvc.collect(
+      const versionPromises = selectedVersion.map((gameVersion) =>
+        queue(
           `${gameVersion.version}`,
           this.createVersion(gameVersion.version),
-        );
-      }
+        ).then(() => {
+          successVersions.add(gameVersion.version);
+        })
+      );
 
-      queue(`json`, this.updateJSON);
-      queueGroup(`versions`, gvc.group);
+      await waitTask(
+        Promise.all(
+          [
+            versionPromises,
+            queue("installer", this.createInstaller(allVersions.installer)),
+          ],
+        ),
+      );
+
+      const newAllVersions: FabricMeta = {
+        game: allVersions.game.filter((game) => {
+          const version = game.version;
+          return successVersions.has(version) || syncedVersions.has(version);
+        }),
+        mappings: allVersions.mappings.filter((mapping) => {
+          const version = mapping.gameVersion;
+          return successVersions.has(version) || syncedVersions.has(version);
+        }),
+        intermediary: allVersions.intermediary.filter((inter) => {
+          const version = inter.version;
+          return successVersions.has(version) || syncedVersions.has(version);
+        }),
+        loader: allVersions.loader,
+        installer: allVersions.installer,
+      };
+
+      await this.storeJSON(newAllVersions);
+      await this.storage.cacheJSON(
+        target,
+        JSON.stringify(newAllVersions),
+        true,
+      );
     });
   }
 
+  private async getTargetLoaderOfGame(
+    version: string,
+  ): Promise<LoaderOfGameMeta[]> {
+    const target = this.getTargetMeta(`/loader/${version}`);
+    if (await this.storage.exist(target)) {
+      return JSON.parse(byteToString(await this.storage.read(target)));
+    }
+
+    return [];
+  }
+
+  private createInstaller(sourceInstaller: InstallerMeta[]): TaskExecutor {
+    return async ({ waitTask, queue }) => {
+      await waitTask(
+        Promise.all(sourceInstaller.map((installer) =>
+          queue(`${installer.version}`, this.createMavenJar(installer.maven))
+        )),
+      );
+    };
+  }
+
   private selectVersion(
-    sourceManifest: AllVersions,
-    targetManifest?: AllVersions,
+    sourceManifest: FabricMeta,
+    targetManifest?: FabricMeta,
   ): GameVersion[] {
     const { matchers, snapshot, release, latest, diff } = this.versionSelector;
 
