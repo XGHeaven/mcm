@@ -128,9 +128,9 @@ export class FabricExecutor {
   }
 
   // 对一些 endpoint 不变以及内容发生变化的 json 进行更新
-  async storeJSON(allVersions: FabricMeta) {
+  async storeMeta(metas: FabricMeta) {
     const gameVersions = new Set<string>(
-      allVersions.game.map((ver) => ver.version),
+      metas.game.map((ver) => ver.version),
     );
 
     const cacheTo = async (uri: string, json: any) => {
@@ -149,11 +149,11 @@ export class FabricExecutor {
     };
 
     await Promise.all([
-      cacheTo("/game", allVersions.game),
+      cacheTo("/game", metas.game),
       selectGame("/game/yarn"),
       selectGame("/game/intermediary"),
-      cacheTo("/yarn", allVersions.mappings),
-      cacheTo("/loader", allVersions.loader),
+      cacheTo("/yarn", metas.mappings),
+      cacheTo("/loader", metas.loader),
     ]);
   }
 
@@ -263,11 +263,11 @@ export class FabricExecutor {
   execute() {
     return this.tasks.queue("fabric", async ({ queue, waitTask }) => {
       const [source, target] = this.getMetaPairPath();
-      const [_, allVersions] = await fetchBinaryAndJson<FabricMeta>(
+      const metas = await fetchJSON<FabricMeta>(
         source,
       );
 
-      const selectedVersion = this.selectVersion(allVersions);
+      const selectedVersion = this.selectVersion(metas);
       const successVersions = new Set<string>();
       const syncedVersions = new Set<string>();
 
@@ -284,32 +284,32 @@ export class FabricExecutor {
         Promise.all(
           [
             versionPromises,
-            queue("installer", this.createInstaller(allVersions.installer)),
+            queue("installer", this.createInstaller(metas.installer)),
           ],
         ),
       );
 
-      const newAllVersions: FabricMeta = {
-        game: allVersions.game.filter((game) => {
+      const newMetas: FabricMeta = {
+        game: metas.game.filter((game) => {
           const version = game.version;
           return successVersions.has(version) || syncedVersions.has(version);
         }),
-        mappings: allVersions.mappings.filter((mapping) => {
+        mappings: metas.mappings.filter((mapping) => {
           const version = mapping.gameVersion;
           return successVersions.has(version) || syncedVersions.has(version);
         }),
-        intermediary: allVersions.intermediary.filter((inter) => {
+        intermediary: metas.intermediary.filter((inter) => {
           const version = inter.version;
           return successVersions.has(version) || syncedVersions.has(version);
         }),
-        loader: allVersions.loader,
-        installer: allVersions.installer,
+        loader: metas.loader,
+        installer: metas.installer,
       };
 
-      await this.storeJSON(newAllVersions);
+      await this.storeMeta(newMetas);
       await this.storage.cacheJSON(
         target,
-        JSON.stringify(newAllVersions),
+        JSON.stringify(newMetas),
         true,
       );
     });
