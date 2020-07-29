@@ -55,8 +55,8 @@ forge=http://mcm.xgheaven.com/forge
 
 ## Open Minecraft Mirror Protocol
 
-Version: v0.0.2
-Last update: 2020-07-20
+Version: v0.0.3
+Last update: 2020-07-30
 Created: 2020-06-21
 
 本协议为开源协议，任何遵循了本协议的镜像服务都可以无缝切换。
@@ -83,12 +83,12 @@ E.g.
 本协议的配置采用 `key=value` 格式：
 
 *Config*:
-- *ConfigLine* *\[* *\\n* *ConfigLine* *\]*
+- *ConfigLine* *\[* **\\n** *ConfigLine* *\]*
 
 *ConfigLine*:
 - *ConfigKey* **=** *ConfigValue* *\[* **;** *ConfigLine* *\]*
-- *#* *AnyLetter*
-- *\\n*
+- **#** *AnyLetter*
+- **\\n**
 
 *ConfigKey*:
 - *PreserveSourceKey*
@@ -136,12 +136,12 @@ mc-resources=http://mc.example.com/resources;mc-libraries=http://mc.example.com/
 1. 让 *config* 为 *source* 在 *Config* 中匹配的一条规则
     2. 如果没有配到，返回 *source*
 1. 让 *configSource* 为 *config* 的 *ConfigKey*，让 *configTarget* 为 *config* 的 *ConfigValue*
-    2. 如果 *configSource* 为关键字，需要自动替换为对应的域名
+    2. 如果 *configSource* 为关键字，自动替换为对应的域名
     2. 如果替换失败，返回 *source*
-1. 如果 *configSource* 有协议，那么就删除掉
-1. 如果 *configTarget* 有协议 
+1. 如果 *configSource* 有协议，就删除掉
+1. 如果 *configTarget* 有协议
     2. 让 *targetProtocol* 为 *configTarget* 的协议，并让 *configTarget* 删除掉自身协议
-    2. 让 *targetProtocol* 为 *sourceProtocol*
+    2. 否则让 *targetProtocol* 为 *sourceProtocol*
 1. 让 *targetRest* 为 *sourceRest* 中把 *configSource* 内容替换为 *configTarget* 的结果
 1. 让 *target* 为 *targetProtocol* + *targetRest*
 1. 返回 *target*
@@ -200,7 +200,7 @@ E.g.
 
 Forge 整体比较简单，所有的资源都存放在一个域名下：
 
-- `files.minecraftforge.net` => `forge` 存放了与 forge 相关的所有资源和数据 
+- `files.minecraftforge.net` => `forge` 存放了与 forge 相关的所有资源和数据
 
 ### LiteLoader(WIP)
 
