@@ -27,7 +27,7 @@ const getMetaStorageEndpoint = (metaUrl: string) => {
 
 const getMinecraftMetaRemoteEndpoint = () =>
   "http://launchermeta.mojang.com/mc/game/version_manifest.json";
-const minecraftMetaTarget = "/minecraft/mc/game/version_manifest.json";
+const minecraftMetaTarget = getMetaStorageEndpoint(getMinecraftMetaRemoteEndpoint());
 
 const getLauncherEndpoint = (jarUrl: string) => {
   return path.join(`/minecraft/launcher`, new URL(jarUrl).pathname);
