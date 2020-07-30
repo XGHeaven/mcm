@@ -329,9 +329,11 @@ export class FabricExecutor {
   private createInstaller(sourceInstaller: InstallerMeta[]): TaskExecutor {
     return async ({ waitTask, queue }) => {
       await waitTask(
-        Promise.all(sourceInstaller.map((installer) =>
-          queue(`${installer.version}`, this.createMavenJar(installer.maven))
-        )),
+        Promise.all(
+          sourceInstaller.map((installer) =>
+            queue(`${installer.version}`, this.createMavenJar(installer.maven))
+          ),
+        ),
       );
     };
   }

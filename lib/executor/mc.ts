@@ -13,7 +13,7 @@ import {
   matchVersion,
   VersionSelector,
 } from "../utils.ts";
-import { LibraryFile, Library, LibraryExecutor } from "./_library.ts";
+import { Library, LibraryExecutor } from "./_library.ts";
 
 const getAssetRemoteEndpoint = (hash: string) =>
   `http://resources.download.minecraft.net/${hash.substring(0, 2)}/${hash}`;
@@ -27,7 +27,9 @@ const getMetaStorageEndpoint = (metaUrl: string) => {
 
 const getMinecraftMetaRemoteEndpoint = () =>
   "http://launchermeta.mojang.com/mc/game/version_manifest.json";
-const minecraftMetaTarget = getMetaStorageEndpoint(getMinecraftMetaRemoteEndpoint());
+const minecraftMetaTarget = getMetaStorageEndpoint(
+  getMinecraftMetaRemoteEndpoint(),
+);
 
 const getLauncherEndpoint = (jarUrl: string) => {
   return path.join(`/minecraft/launcher`, new URL(jarUrl).pathname);
@@ -146,8 +148,7 @@ export class MinecraftExecutor {
   }
 
   #library: LibraryExecutor;
-
-  private assetIndexCache = new Map<string, Promise<void>>();
+  #assetIndexCache: Map<string, Promise<any>> = new Map();
 
   constructor(
     private storage: Storage,
@@ -164,11 +165,19 @@ export class MinecraftExecutor {
     return async () => this.storage.cacheRemoteFile(source, target);
   }
 
-  private createCacheAssetIndex(
+  private tryCacheAssetIndex(
     assetIndex: MinecraftPackageAssetIndex,
   ): TaskExecutor {
-    return async ({ waitTask }) => {
-      await waitTask(this.runAssetIndexCheck(assetIndex));
+    const { sha1: hash } = assetIndex;
+    return async ({ waitTask, runTask }) => {
+      const promise = this.#assetIndexCache.get(hash);
+      if (promise) {
+        await waitTask(promise);
+      } else {
+        const task = runTask(this.createAssetIndexCheck(assetIndex));
+        this.#assetIndexCache.set(hash, task);
+        await task;
+      }
     };
   }
 
@@ -190,7 +199,7 @@ export class MinecraftExecutor {
 
       const assetIndexRunning = queue(
         `assetIndex`,
-        this.createCacheAssetIndex(mcPackage.assetIndex),
+        this.tryCacheAssetIndex(mcPackage.assetIndex),
       );
 
       const downloads = queueGroup(
@@ -425,14 +434,6 @@ export class MinecraftExecutor {
     });
   }
 
-  // 运行的依赖库
-  private library(lib: LibraryFile) {
-    return async () => {
-      const target = MinecraftExecutor.getTargetLibraryFromUrl(lib.url);
-      await this.storage.cacheRemoteFile(lib.url, target);
-    };
-  }
-
   private async readTargetMinecraftMeta(): Promise<MinecraftVersionManifest> {
     if (await this.storage.exist(minecraftMetaTarget)) {
       return JSON.parse(
@@ -449,61 +450,51 @@ export class MinecraftExecutor {
     };
   }
 
-  private runAssetIndexCheck(
+  private createAssetIndexCheck(
     { sha1: expectHash, id, url: source }: MinecraftPackageAssetIndex,
-  ) {
-    if (this.assetIndexCache.get(expectHash)) {
-      return this.assetIndexCache.get(expectHash)!;
-    }
-
+  ): TaskExecutor {
     const target = getMetaStorageEndpoint(source);
 
-    const promise = this.tasks.queue(
-      `minecraft:asset-index:${id}`,
-      async ({ queueGroup, waitTask }) => {
-        if (!this.options.ignoreLock && await this.storage.exist(target)) {
-          console.log(
-            `Asset of ${id}(${expectHash}) has been locked`,
-          );
-          return;
-        }
-
-        const [data, json] = await fetchBinaryAndJson(source);
-
-        const actualHash = hash.createHash("sha1").update(data).toString("hex");
-        if (expectHash !== actualHash) {
-          console.error(
-            `(${id}) Fetch asset index maybe not correct, hash is not matched.`,
-          );
-          console.error(
-            `  ${expectHash}(expected) !== ${actualHash}(actual)`,
-          );
-          console.error(`  Please restart sync again`);
-          throw new Error(`${id} hash check failed`);
-        }
-
-        const exes: GroupTaskExecutor = {};
-
-        for (const { hash } of Object.values(json.objects) as any[]) {
-          exes[
-            `${hash}`
-          ] = this.createCacheResource(
-            getAssetRemoteEndpoint(hash),
-            getAssetStorageEndpoint(hash),
-          );
-        }
-
-        // 只要有一个资源下载失败，就没有必要再尝试下去了
-        await waitTask(queueGroup(`assets`, exes, true));
-
-        await this.storage.cacheJSON(
-          target,
-          data,
+    return async ({ queueGroup, waitTask }) => {
+      if (!this.options.ignoreLock && await this.storage.exist(target)) {
+        console.log(
+          `Asset of ${id}(${expectHash}) has been locked`,
         );
-      },
-    );
+        return;
+      }
 
-    this.assetIndexCache.set(expectHash, promise);
-    return promise;
+      const [data, json] = await fetchBinaryAndJson(source);
+
+      const actualHash = hash.createHash("sha1").update(data).toString("hex");
+      if (expectHash !== actualHash) {
+        console.error(
+          `(${id}) Fetch asset index maybe not correct, hash is not matched.`,
+        );
+        console.error(
+          `  ${expectHash}(expected) !== ${actualHash}(actual)`,
+        );
+        console.error(`  Please restart sync again`);
+        throw new Error(`${id} hash check failed`);
+      }
+
+      const exes: GroupTaskExecutor = {};
+
+      for (const { hash } of Object.values(json.objects) as any[]) {
+        exes[
+          `${hash}`
+        ] = this.createCacheResource(
+          getAssetRemoteEndpoint(hash),
+          getAssetStorageEndpoint(hash),
+        );
+      }
+
+      // 只要有一个资源下载失败，就没有必要再尝试下去了
+      await waitTask(queueGroup(`assets`, exes, true));
+
+      await this.storage.cacheJSON(
+        target,
+        data,
+      );
+    };
   }
 }
