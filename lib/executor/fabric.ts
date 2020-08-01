@@ -1,5 +1,5 @@
 import { Storage } from "../storage.ts";
-import { fetchBinaryAndJson, fetchJSON } from "../service.ts";
+import { fetchJSON } from "../service.ts";
 import { path } from "../deps.ts";
 import {
   TaskManager,
@@ -194,7 +194,10 @@ export class FabricExecutor {
       const sourceLoaderOfGame = await fetchJSON<LoaderOfGameMeta[]>(
         metaSource,
       );
-      const currentLoaderOfGame = await this.getTargetLoaderOfGame(gameVersion);
+      const currentLoaderOfGame = await this.getDefaultJSON<LoaderOfGameMeta[]>(
+        metaTarget,
+        [],
+      );
 
       const syncedLoaderVersion = new Set<string>(
         currentLoaderOfGame.map(({ loader }) => loader.version),
@@ -217,7 +220,7 @@ export class FabricExecutor {
 
       const loaderOfGame = this.versionSelector.diff
         ? sourceLoaderOfGame.filter((loader) =>
-          syncedLoaderVersion.has(loader.loader.version)
+          !syncedLoaderVersion.has(loader.loader.version)
         )
         : sourceLoaderOfGame;
 
@@ -266,6 +269,10 @@ export class FabricExecutor {
       const metas = await fetchJSON<FabricMeta>(
         source,
       );
+      const targetMetas = await this.getDefaultJSON<FabricMeta>(
+        target,
+        { game: [], installer: [], intermediary: [], mappings: [], loader: [] },
+      );
 
       const selectedVersion = this.selectVersion(metas);
       const successVersions = new Set<string>();
@@ -280,11 +287,17 @@ export class FabricExecutor {
         })
       );
 
+      const installer = this.versionSelector.diff
+        ? metas.installer.filter((ins) =>
+          !targetMetas.installer.some((tins) => tins.version === ins.version)
+        )
+        : metas.installer;
+
       await waitTask(
         Promise.all(
           [
             versionPromises,
-            queue("installer", this.createInstaller(metas.installer)),
+            queue("installer", this.createInstaller(installer)),
           ],
         ),
       );
@@ -315,15 +328,12 @@ export class FabricExecutor {
     });
   }
 
-  private async getTargetLoaderOfGame(
-    version: string,
-  ): Promise<LoaderOfGameMeta[]> {
-    const target = this.getTargetMeta(`/loader/${version}`);
-    if (await this.storage.exist(target)) {
-      return JSON.parse(byteToString(await this.storage.read(target)));
+  private async getDefaultJSON<T>(url: string, defaults: T): Promise<T> {
+    if (await this.storage.exist(url)) {
+      return JSON.parse(byteToString(await this.storage.read(url)));
     }
 
-    return [];
+    return defaults;
   }
 
   private createInstaller(sourceInstaller: InstallerMeta[]): TaskExecutor {
@@ -342,25 +352,19 @@ export class FabricExecutor {
     sourceManifest: FabricMeta,
     targetManifest?: FabricMeta,
   ): GameVersion[] {
-    const { matchers, snapshot, release, latest, diff } = this.versionSelector;
+    const { matchers, snapshot, release, latest } = this.versionSelector;
 
     if (latest) {
       return sourceManifest.game.slice(0, 1);
     }
 
-    return sourceManifest.game.filter((gameVersion) => {
-      let ret = matchers.some((matcher) =>
-        matchVersion(gameVersion.version, matcher)
-      );
+    return sourceManifest.game.filter((game) => {
+      let ret = matchers.some((matcher) => matchVersion(game.version, matcher));
 
       if (ret && release) {
-        ret = !!gameVersion.stable;
+        ret = !!game.stable;
       } else if (ret && snapshot) {
-        ret = !gameVersion.stable;
-      }
-
-      if (ret && diff) {
-        console.log(`WARN: fabric cannot support "diff" now`);
+        ret = !game.stable;
       }
 
       return ret;
