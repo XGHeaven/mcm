@@ -17,6 +17,7 @@
 
 - 针对云存储来说，往往都是自带网关的，比如 OSS 的外网地址。但你也可以选择使用 CDN 作为网关来提供服务
 - 针对本地存储来说，nginx 提供静态资源托管，那么他也是一个网关
+- 网关也可以是代理服务器，比如 serverless 服务，接收到请求之后通过 304 转发到其他网关服务
 
 ### 同步服务
 
@@ -36,6 +37,8 @@ deno install -A --unstable https://raw.githubusercontent.com/XGHeaven/mcm/master
 ```bash
 mcm --storage-type fs --storage-options /data/mcm/storage 'mc:all' 'fabric:all' 'forge:all'
 ```
+
+本同步程序暂时会按照 mcm.xgheaven.com 的目录结构同步，具体结构可以查看配置字符串。
 
 ### 存储服务的选择
 
@@ -61,3 +64,7 @@ CLI 提供了多种版本选择的能力，通过 `关键字:版本选择器` �
 - `diff` 仅仅选择未同步版本进行同步
 
 更多帮助信息，请查看 `mcm --help`
+
+## 网关服务
+
+针对文件系统，推荐使用 nginx 作为网关服务
