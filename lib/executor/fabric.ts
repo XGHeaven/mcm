@@ -296,7 +296,7 @@ export class FabricExecutor {
       await waitTask(
         Promise.all(
           [
-            versionPromises,
+            ...versionPromises,
             queue("installer", this.createInstaller(installer)),
           ],
         ),
