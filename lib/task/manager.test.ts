@@ -215,3 +215,11 @@ Deno.test({
     asserts.assertEquals(step, "aac1ac2bbc1bc2");
   },
 });
+
+Deno.test({
+  name: "should direct passed when group is empty",
+  async fn() {
+    tm = new TaskManager({ parallel: 1 });
+    await tm.queueGroup("test", {});
+  },
+});

@@ -200,4 +200,8 @@ export class AliOSSLayer extends StorageLayer {
   isSupportSameFileFolder(): boolean {
     return true;
   }
+
+  isWantLessUsage(): boolean {
+    return true;
+  }
 }

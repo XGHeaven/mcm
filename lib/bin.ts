@@ -13,6 +13,7 @@ import { FsLayer } from "./storage/fs-layer.ts";
 import { MinecraftExecutor } from "./executor/mc.ts";
 import { FabricExecutor } from "./executor/fabric.ts";
 import { ForgeExecutor } from "./executor/forge.ts";
+import { CurseExecutor } from "./executor/curse.ts";
 
 const args = flags.parse(Deno.args, {
   string: ["storage-type", "storage-options"],
@@ -38,13 +39,15 @@ if (args["help"] || args["_"].length === 0) {
     `  minecraft:${version}\t sync minecraft of ${version}, alias: mc`,
     `  fabric:${version}\t sync fabric of ${version}`,
     `  forge:${version}\t sync forge of ${version}`,
-    ,
+    `  curse:${version}\t sync curse mod`,
     `  ${version} is one of`,
     `    ${colors.cyan("1.14.4")} \t\t exact version`,
     `    ${colors.cyan("1.14-pre")} \t\t match 1.14-pre1, 1.14-pre2 etc`,
     `    ${colors.cyan("1.14-rc")} \t\t match 1.14-rc1 1.14-rc2 etc`,
     `    ${colors.cyan("1.14.*")} \t\t match 1.14.1 1.14.2 etc`,
     `    ${colors.cyan("/^1\\.16.*$/")} \t regexp version`,
+    `    ${colors.cyan("310806")} \t curse addon id, curse only`,
+    `    ${colors.cyan("-310806")} \t delete curse addon, curse only`,
     `    ${colors.cyan("release")} \t\t all release version`,
     `    ${colors.cyan("snapshot")} \t\t only snapshot version`,
     `    ${colors.cyan("old")} \t\t old version before 1.0.0, default false`,
@@ -114,6 +117,7 @@ const storage = new Storage(layer);
 const mcCommands = new Set<string>();
 const fabricCommands = new Set<string>();
 const forgeCommands = new Set<string>();
+const curseCommands = new Set<string>();
 
 for (const command of commands) {
   const [type, versionString] = command.split(":");
@@ -131,6 +135,9 @@ for (const command of commands) {
       break;
     case "forge":
       forgeCommands.add(versionString);
+      break;
+    case "curse":
+      curseCommands.add(versionString);
       break;
   }
 }
@@ -179,5 +186,19 @@ if (forgeCommands.size) {
 
   if (!listOnly) {
     forge.execute().catch(console.error);
+  }
+}
+
+if (curseCommands.size) {
+  const curse = new CurseExecutor({
+    storage,
+    task: tasks,
+    versionSelector: parseVersionSelector(Array.from(curseCommands.values())),
+  });
+
+  if (!listOnly) {
+    curse.execute().catch(console.error);
+  } else {
+    curse.executeList().catch(console.error);
   }
 }

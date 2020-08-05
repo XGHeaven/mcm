@@ -1,5 +1,6 @@
 import { StorageLayer } from "./storage/layer.ts";
 import { fetchAndRetry } from "./service.ts";
+import { byteToString } from "./utils.ts";
 
 function createLockBuffer() {
   return new TextEncoder().encode(
@@ -10,10 +11,11 @@ function createLockBuffer() {
 export class Storage implements StorageLayer {
   constructor(private layer: StorageLayer) {}
 
-  isSupportSameFileFolder = this.layer.isSupportSameFileFolder.bind(this.layer);
   read = this.layer.read.bind(this.layer);
   write = this.layer.write.bind(this.layer);
   exist = this.layer.exist.bind(this.layer);
+  isSupportSameFileFolder = this.layer.isSupportSameFileFolder.bind(this.layer);
+  isWantLessUsage = this.layer.isWantLessUsage.bind(this.layer);
 
   async cacheRemoteFile(
     source: string,
@@ -55,6 +57,27 @@ export class Storage implements StorageLayer {
     await this.layer.write(target, value, {
       type: "application/json",
     });
+  }
+
+  async readJSONWithDefault<T>(target: string, defaults: T): Promise<T> {
+    try {
+      const data = await this.layer.read(target);
+      return JSON.parse(byteToString(data));
+    } catch (e) {
+      return defaults;
+    }
+  }
+
+  async readFromBoth(source: string, target: string): Promise<Uint8Array> {
+    if (this.layer.isWantLessUsage()) {
+      return new Uint8Array(await (await fetchAndRetry(source)).arrayBuffer());
+    }
+    return await this.layer.read(target);
+  }
+
+  async readJSONFromBoth<T>(source: string, target: string): Promise<T> {
+    const data = await this.readFromBoth(source, target);
+    return JSON.parse(byteToString(data));
   }
 
   async isLock(lockpath: string) {

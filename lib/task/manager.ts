@@ -429,8 +429,12 @@ export class TaskManager {
       group.addChild(new TaskNode(key, exe, group));
     }
 
-    this._addTask(group);
-    this.run();
+    if (!group.totalChildren) {
+      group.defer.resolve();
+    } else {
+      this._addTask(group);
+      this.run();
+    }
 
     return group.defer;
   }
