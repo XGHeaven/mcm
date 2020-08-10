@@ -1,9 +1,8 @@
 # **M**ine**c**raft **M**irror
 
-Minecraft Mirror for vanilla/fabric/forge/optfine
+我的世界镜像服务，方便快捷的架设自己的私有服务。采用 No Server 的架构方案，极大的降低开发部署的难度。
 
-采用 No Server 的架构方案，极大的降低资源费用的使用。
-本代码的实现遵循 [MCM](./MCM.md) 协议，该协议下文中定义。
+代理服务的实现遵循 [MCM](./MCM.md) 协议。
 
 ## Source
 
@@ -12,10 +11,11 @@ Minecraft Mirror for vanilla/fabric/forge/optfine
 - [x] forge
 - [ ] liteloader
 - [ ] mods
+    - [x] partial curseforge mods
 
 ## Quick start
 
-官方镜像配置字符串：
+在支持 MCM 协议的启动器中输入如下镜像配置字符串便可以使用本项目提供的镜像地址：
 
 ```text
 minecraft-meta=http://mcm.xgheaven.com/minecraft/launcher-meta
@@ -30,10 +30,12 @@ forge=http://mcm.xgheaven.com/forge
 > 没有使用 https 协议是为了降低资源的占用（主要是云服务 https 请求数要收费）以及下载的速度。
 > 如果担心有拦截风险，可以尝试自行本地部署一份。
 
-为了方便使用，特地 fork 了 [HMCL](https://github.com/huanghongxun/HMCL) 代码，添加了本代理官方镜像地址。
+为了方便展示，特地 fork 了 [HMCL](https://github.com/huanghongxun/HMCL) 代码，添加了本代理官方镜像地址。
 下载地址见 Release 页面。
 
-> 注意：fork 版本的代码所有权依旧归原作者所有，没有做任何额外的修改，只是添加镜像地址，如果有任何问题，请尝试去官方仓库解决。
+> 注意：fork 版本的代码所有权依旧归原作者所有，没有做任何额外的修改，只是添加镜像地址。
+
+## How to build yourself mirror
 
 [如何构建自己的镜像呢？](./SELFHOST.md)
 
