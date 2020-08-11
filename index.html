@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Minecraft Mirror ---- Develop by XGHeaven</title>
+</head>
+<body>
+<div id="app"></div>
+<script type="module">
+    import {createElement as h} from 'https://cdn.skypack.dev/react@16'
+    import {render} from 'https://cdn.skypack.dev/react-dom@16'
+    import { Switch, Route} from 'https://cdn.skypack.dev/react-router@5'
+    import { HashRouter, Link } from 'https://cdn.skypack.dev/react-router-dom@5'
+    import {css, injectGlobal} from 'https://cdn.skypack.dev/emotion@10'
+
+
+    injectGlobal`
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #eee;
+  }
+`
+
+    function App() {
+        return (
+            h(HashRouter, {}, h('div', {
+                className: css`max-width: 1024px;margin: 0 auto;padding: 0 24px;`
+                },
+                h(Header),
+                h('div', {},
+                    h(Switch, {},
+                        h(Route, {
+                            path: '/',
+                            component: Home,
+                            exact: true
+                        }),
+                        h(Route, {
+                            path: '/minecraft',
+                            component: MinecraftPanel,
+                            exact: true
+                        })
+                    )
+                )
+            ))
+        )
+    }
+
+    const s$headerLayout = css`
+height: 60px;
+display: flex;
+flex-direction: row;
+justify-content: space-between;
+align-items: center;
+`
+    const s$headerSide = css`
+`
+
+    const s$headerName = css`
+
+`
+    const s$headerItems = css`
+
+`
+
+    const s$headerLink = css`
+padding: 6px 12px;
+margin: 0 6px;
+transition: all .3s ease;
+color: black;
+text-decoration: none;
+
+&:hover {
+  background: rgb(180, 200, 180);
+}
+`
+
+    function Home() {
+        return (
+            h('div', {}, '一个灵活开放的我的世界镜像服务')
+        )
+    }
+
+    function Header() {
+        return (
+            h('div', {
+                className: s$headerLayout
+            },
+                h('div', {className: s$headerSide}, 'Minecraft Mirror'),
+                h('div', {className: s$headerSide},
+                    h(Link, {className: s$headerLink, to: '/minecraft'}, 'Minecraft'),
+                    h(Link, {className: s$headerLink, to: '/forge'}, 'Forge'),
+                    h(Link, {className: s$headerLink, to: '/fabric'}, 'Fabric'),
+                    h(Link, {className: s$headerLink, to: '/curse'}, 'Curse'),
+                    h('a', {className: s$headerLink, href:'https://github.com/XGHeaven/mcm'}, 'Github')
+                )
+            )
+        )
+    }
+
+    function MinecraftPanel() {
+        return h('div')
+    }
+
+    render(h(App), document.getElementById('app'))
+</script>
+</body>
+</html>
