@@ -12,93 +12,191 @@
 <script type="module">
     import {createElement as h} from 'https://cdn.skypack.dev/react@16'
     import {render} from 'https://cdn.skypack.dev/react-dom@16'
-    import { Switch, Route} from 'https://cdn.skypack.dev/react-router@5'
-    import { HashRouter, Link } from 'https://cdn.skypack.dev/react-router-dom@5'
-    import {css, injectGlobal} from 'https://cdn.skypack.dev/emotion@10'
+    import {Switch, Route} from 'https://cdn.skypack.dev/react-router@5'
+    import {HashRouter, Link} from 'https://cdn.skypack.dev/react-router-dom@5'
+    import {css, injectGlobal, cx} from 'https://cdn.skypack.dev/emotion@10'
 
 
     injectGlobal`
-  html, body {
-    margin: 0;
-    padding: 0;
-    width: 100%;
-    height: 100%;
-    background-color: #eee;
-  }
+html, body {
+margin: 0;
+padding: 0;
+width: 100%;
+height: 100%;
+background-color: #eee;
+}
 `
+
+    const maxWidth = 1024
+    const CONFIG_STRING = `
+minecraft-meta=http://mcm.xgheaven.com/minecraft/launcher-meta
+minecraft-launcher=http://mcm.xgheaven.com/minecraft/launcher
+minecraft-libraries=http://mcm.xgheaven.com/minecraft/libraries
+minecraft-resources=http://mcm.xgheaven.com/minecraft/assets
+fabric-meta=http://mcm.xgheaven.com/fabric/meta
+fabric-maven=http://mcm.xgheaven.com/fabric/maven
+forge=http://mcm.xgheaven.com/forge
+    `.trim()
 
     function App() {
         return (
-            h(HashRouter, {}, h('div', {
-                className: css`max-width: 1024px;margin: 0 auto;padding: 0 24px;`
-                },
+            h(HashRouter, {}, h('div', {},
                 h(Header),
-                h('div', {},
-                    h(Switch, {},
-                        h(Route, {
-                            path: '/',
-                            component: Home,
-                            exact: true
-                        }),
-                        h(Route, {
-                            path: '/minecraft',
-                            component: MinecraftPanel,
-                            exact: true
-                        })
-                    )
-                )
+                h(LastSyncStatus),
+                h(SourceSyncedDisplay),
             ))
         )
     }
 
+    const s$container = css`
+max-width: ${maxWidth}px;
+margin: 0 auto;
+`
+
     const s$headerLayout = css`
-height: 60px;
+padding: 12px 0 36px 0;
+background: linear-gradient(30deg, rgb(54, 78, 138), rgb(187, 69, 31), rgb(205, 122, 51), rgb(130, 173, 103), rgb(94, 124, 79), rgb(80, 62, 45), rgb(34, 24, 16));
+color: white;
+`
+    const s$headerContainer = css`
+max-width: ${maxWidth}px;
+margin: 0 auto;
 display: flex;
 flex-direction: row;
-justify-content: space-between;
 align-items: center;
 `
     const s$headerSide = css`
 `
 
-    const s$headerName = css`
-
+    const s$headerNamePart = css`
+width: 100%;
+flex: auto;
+`
+    const s$headerConfigPart = css`
+margin-top: 32px;
+width: 100%;
+flex: auto;
 `
     const s$headerItems = css`
 
 `
 
-    const s$headerLink = css`
+    const s$panelLink = css`
+display: inline-block;
 padding: 6px 12px;
-margin: 0 6px;
 transition: all .3s ease;
 color: black;
 text-decoration: none;
+flex: auto;
+width: 100%;
+text-align: center;
 
 &:hover {
   background: rgb(180, 200, 180);
 }
 `
 
-    function Home() {
-        return (
-            h('div', {}, '一个灵活开放的我的世界镜像服务')
-        )
-    }
+    const s$featureItem = css`
+width: 100%;
+flex: auto;
+text-align: center;
+padding: 0 12px;
+`
+
+    const s$button = css`
+display: inline-block;
+padding: 6px 12px;
+margin: 0 6px;
+transition: all .3s ease;
+color: white;
+text-decoration: none;
+background-color: rgba(80, 200, 80, .3);
+
+&:hover {
+  background: rgb(180, 200, 180);
+}
+`
 
     function Header() {
         return (
             h('div', {
-                className: s$headerLayout
-            },
-                h('div', {className: s$headerSide}, 'Minecraft Mirror'),
-                h('div', {className: s$headerSide},
-                    h(Link, {className: s$headerLink, to: '/minecraft'}, 'Minecraft'),
-                    h(Link, {className: s$headerLink, to: '/forge'}, 'Forge'),
-                    h(Link, {className: s$headerLink, to: '/fabric'}, 'Fabric'),
-                    h(Link, {className: s$headerLink, to: '/curse'}, 'Curse'),
-                    h('a', {className: s$headerLink, href:'https://github.com/XGHeaven/mcm'}, 'Github')
+                    className: s$headerLayout
+                },
+                h('div', {className: s$headerContainer},
+                    h('div', {className: s$headerNamePart},
+                        h('h1', {}, 'Minecraft Mirror'),
+                        h('div', {}, '一个灵活开放的我的世界镜像服务'),
+                        h('div', {className: css`margin-top: 8px;`},
+                            h('a', {
+                                className: s$button,
+                                href: 'https://github.com/XGHeaven/mcm/releases',
+                                target: '_blank'
+                            }, 'Download'),
+                            h('a', {
+                                className: s$button,
+                                href: 'https://github.com/XGHeaven/mcm',
+                                target: '_blank'
+                            }, 'Github')
+                        )
+                    ),
+                    h('div', {className: s$headerConfigPart},
+                        h('div', {className: css`font-size: 12px`}, '配置字符串：'),
+                        h('pre', {className: css``}, CONFIG_STRING)
+                    )),
+                h('div', {className: cx(s$headerContainer, css`margin-top: 24px;`)},
+                    h(FeatureItem, {title: '❶ 可私有部署', content: '部署属于你们小伙伴自己的镜像服务，即使天塌下来也不用担心玩不了'}),
+                    h(FeatureItem, {title: '❷ 灵活的配置', content: '遵循 MCM 协议的配置方式，可以配置出非常灵活的选项'}),
+                    h(FeatureItem, {title: '❸ 无需数据库', content: '任何数据的存储都无需数据库的参与，极大的降低了部署和开发的难度'}),
+                    h(FeatureItem, {title: '❹ 低硬件要求', content: '低到只需要能运行 Nginx 就可以对外提供服务'})
                 )
+            )
+        )
+    }
+
+    function LastSyncStatus() {
+        return (
+            h('div', {},
+                h('div', {className: css`text-align: center`}, '最近同步状态: TODO')
+            )
+        )
+    }
+
+    function FeatureItem(props) {
+        return h('div', {className: s$featureItem},
+            h('div', {className: css`font-weight: bold`}, props.title),
+            h('div', {className: css`font-size: 12px;color: #ddd`}, props.content),
+        )
+    }
+
+    function SourceSyncedDisplay() {
+        return (
+            h('div', {className: cx(s$container, css`background: white;padding-bottom: 24px;border-bottom-right-radius: 24px;border-bottom-left-radius: 24px;`)},
+                h('div', {className: css`display: flex; flex-direction: row;`},
+                    h(Link, {className: s$panelLink, to: '/minecraft'}, 'Minecraft'),
+                    h(Link, {className: s$panelLink, to: '/forge'}, 'Forge'),
+                    h(Link, {className: s$panelLink, to: '/fabric'}, 'Fabric'),
+                    h(Link, {className: s$panelLink, to: '/curse'}, 'Curse'),
+                ),
+                h(Switch, {},
+                    h(Route, {
+                        path: '/',
+                        component: PleaseSelectPanel,
+                        exact: true
+                    }),
+                    h(Route, {
+                        path: '/minecraft',
+                        component: MinecraftPanel,
+                        exact: true
+                    })
+                )
+            )
+        )
+    }
+
+    function PleaseSelectPanel() {
+        return (
+            h('div', {className: css`text-align: center`},
+                '请选择一个同步项目查看同步状态'
             )
         )
     }
