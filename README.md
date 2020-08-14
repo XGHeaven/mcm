@@ -25,6 +25,8 @@ minecraft-resources=http://mcm.xgheaven.com/minecraft/assets
 fabric-meta=http://mcm.xgheaven.com/fabric/meta
 fabric-maven=http://mcm.xgheaven.com/fabric/maven
 forge=http://mcm.xgheaven.com/forge
+curse-api=http://mcm.xgheaven.com/curse
+curse-files=http://mcm.xgheaven.com/curse
 ```
 
 > 没有使用 https 协议是为了降低资源的占用（主要是云服务 https 请求数要收费）以及下载的速度。

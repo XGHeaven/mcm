@@ -1,8 +1,8 @@
 
 ## Minecraft Mirror Protocol
 
-Version: v0.0.3
-Last update: 2020-07-30
+Version: v0.0.4
+Last update: 2020-08-14
 Created: 2020-06-21
 
 ### 基本原则
@@ -52,6 +52,9 @@ E.g.
 - **fabric-meta**
 - **fabric-maven**
 - **forge**
+- **curse**
+- **curse-files**
+- **curse-api**
 
 *URL*:
 - [WHATWG URL](https://url.spec.whatwg.org/)
@@ -150,10 +153,13 @@ Forge 整体比较简单，所有的资源都存放在一个域名下：
 
 TODO
 
-### Mods(WIP)
+### Mods
 
-镜像源可以缓存玩家常用的模组，根据模组类型的不同，分别存放在不同的文件夹下，并创建 `/mods` 文件夹。
+镜像源可以缓存玩家常用的模组，有许多的不同的模组下载源，定义了 CurseForge 源。
 
-- `fabric` 相关模组 => `/fabric/mods`
-- `forge` 相关模组 => `/forge/mods`
-- `liteloader` 相关模组 => `/liteloader/mods`
+#### CurseForge
+
+CurseForge 主要有两部分组成，分别为 API 以及 CDN 存储：
+
+- `https://addons-ecs.forgesvc.net` => `curse-api`
+- `https://edge.forgecdn.net` => `curse-files`
