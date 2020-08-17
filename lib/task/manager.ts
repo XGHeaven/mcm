@@ -375,7 +375,7 @@ export class TaskManager {
         );
       }
 
-      Promise.resolve().then(() => this.run());
+      setTimeout(() => this.run())
     };
 
     runner.then(() => finish(), finish);
@@ -402,7 +402,7 @@ export class TaskManager {
   private changeParallel(delta: number) {
     // 扩张的话无需设置上限，因为扩张说明任务的所有权已经移交出去了
     this.#parallel = Math.max(this.#parallel + delta, this.#minParallel);
-    Promise.resolve().then(() => this.run());
+    setTimeout(() => this.run())
   }
 
   private _queue(
