@@ -399,9 +399,7 @@ export class TaskManager {
 
     return colors.gray(
       `(${task.childFinished}/${
-        task.childError
-          ? colors.red(String(task.childError))
-          : task.childError
+        task.childError ? colors.red(String(task.childError)) : task.childError
       }/${task.totalChildren})`,
     );
   }

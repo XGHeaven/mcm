@@ -12,7 +12,6 @@ export * as flags from "https://deno.land/std@0.61.0/flags/mod.ts";
 // third part
 export { hmac } from "https://denopkg.com/chiefbiiko/hmac/mod.ts";
 
-// pika
-import { default as _JSZip } from "https://cdn.skypack.dev/jszip@3.5.0";
-// 因为类型问题，所以要单独转换一次
-export const JSZip: any = _JSZip;
+// 这里不用 pika 的原因是 pika 上面的代码运行结果不正确
+// @deno-types="./typings/jszip.d.ts"
+export { default as JSZip } from "https://jspm.dev/jszip@3.5.0";
