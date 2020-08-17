@@ -173,7 +173,6 @@ class GroupNode extends TreeNode {
   }
 
   onChildFinished(err?: any) {
-    super.onChildFinished(err);
     if (this.bailout) {
       if (!this.child) {
         // 所有任务都结束了
@@ -198,6 +197,7 @@ class GroupNode extends TreeNode {
         }
       }
     }
+    super.onChildFinished(err);
   }
 
   private _cleanWaitingChild() {
