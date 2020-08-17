@@ -173,20 +173,27 @@ class GroupNode extends TreeNode {
   }
 
   onChildFinished(err?: any) {
+    super.onChildFinished(err);
     if (this.bailout) {
-      if (!this.child) {
-        // 所有任务都结束了
+      if (!this.child && !this.#bailouted) {
+        // 所有任务都结束了并且没有任务出现错误
         if (this.childError) {
           this.defer.reject(this.errors[0]);
         } else {
           this.defer.resolve();
         }
+        this.parent.removeTask(this);
       } else if (err && !this.#bailouted) {
+        // 第一次出现任务错误
         this.#bailouted = true;
         this._cleanWaitingChild();
         if (!this.child) {
           this.defer.reject(err);
+          this.parent.removeTask(this);
         }
+      } else if (!this.child && this.#bailouted) {
+        // 任务都结束了并且有任务出错了
+        this.parent.removeTask(this);
       }
     } else {
       if (this.childFinished === this.totalChildren) {
@@ -195,9 +202,9 @@ class GroupNode extends TreeNode {
         } else {
           this.defer.resolve();
         }
+        this.parent.removeTask(this);
       }
     }
-    super.onChildFinished(err);
   }
 
   private _cleanWaitingChild() {
@@ -466,5 +473,12 @@ export class TaskManager {
 
   private getDisplayName(node: TreeNode) {
     return readableDisplayNames(node.displayNames);
+  }
+
+  /**
+   * @private for test
+   */
+  private getRoot() {
+    return this.#root;
   }
 }

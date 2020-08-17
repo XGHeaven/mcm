@@ -119,6 +119,7 @@ Deno.test("group", async () => {
     c: newExe(),
   });
   asserts.assertEquals(step, "yyy");
+  asserts.assertEquals(tm["getRoot"]().child, null);
 
   step = "";
   await tm.queueGroup("group-some-error", {
@@ -130,6 +131,7 @@ Deno.test("group", async () => {
     f: newExe(),
   }).catch(() => {});
   asserts.assertEquals(step, "yynyyy");
+  asserts.assertEquals(tm["getRoot"]().child, null);
 });
 
 Deno.test("group bailout", async () => {
