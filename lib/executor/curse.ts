@@ -104,7 +104,11 @@ export class CurseExecutor {
 
         await waitTask(queueGroup("files", group.group));
 
-        await this.#storage.cacheJSON(filesTarget, JSON.stringify(sourceFiles), true);
+        await this.#storage.cacheJSON(
+          filesTarget,
+          JSON.stringify(sourceFiles),
+          true,
+        );
       }
 
       await this.#storage.cacheRemoteFile(addonSource, addonTarget, true);
