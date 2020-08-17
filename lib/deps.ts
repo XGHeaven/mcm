@@ -13,6 +13,6 @@ export * as flags from "https://deno.land/std@0.61.0/flags/mod.ts";
 export { hmac } from "https://denopkg.com/chiefbiiko/hmac/mod.ts";
 
 // pika
-import { default as _JSZip } from "https://dev.jspm.io/jszip@3.5.0";
+import { default as _JSZip } from "https://cdn.skypack.dev/jszip@3.5.0";
 // 因为类型问题，所以要单独转换一次
 export const JSZip: any = _JSZip;
