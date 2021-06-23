@@ -9,13 +9,19 @@ function createLockBuffer() {
 }
 
 export class Storage implements StorageLayer {
-  constructor(private layer: StorageLayer) {}
+  constructor(private layer: StorageLayer) {
+    this.read = this.layer.read.bind(this.layer);
+    this.write = this.layer.write.bind(this.layer);
+    this.exist = this.layer.exist.bind(this.layer);
+    this.isSupportSameFileFolder = this.layer.isSupportSameFileFolder.bind(this.layer);
+    this.isWantLessUsage = this.layer.isWantLessUsage.bind(this.layer);
+  }
 
-  read = this.layer.read.bind(this.layer);
-  write = this.layer.write.bind(this.layer);
-  exist = this.layer.exist.bind(this.layer);
-  isSupportSameFileFolder = this.layer.isSupportSameFileFolder.bind(this.layer);
-  isWantLessUsage = this.layer.isWantLessUsage.bind(this.layer);
+  read: StorageLayer['read']
+  write: StorageLayer['write']
+  exist: StorageLayer['exist']
+  isSupportSameFileFolder: StorageLayer['isSupportSameFileFolder']
+  isWantLessUsage: StorageLayer['isWantLessUsage']
 
   async cacheRemoteFile(
     source: string,

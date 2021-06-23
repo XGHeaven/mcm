@@ -17,6 +17,9 @@ play:
 format:
 	deno fmt lib/
 
+lint:
+	DENO_DIR=$(CACHE_DIR) deno lint --unstable ./lib
+
 test:
 	DENO_DIR=$(CACHE_DIR) deno test --unstable -A
 
